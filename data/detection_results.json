@@ -1,0 +1,60 @@
+{
+  "citra1.jpeg": [
+    {
+      "detection_id": "8cec9164-d774-4407-a5f0-2e53ab0eecad",
+      "class_id": 1,
+      "class": "apple-ripe",
+      "confidence": 0.7542960047721863,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "citraunripe.jpg": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "citra27.jpg": [
+    {
+      "detection_id": "8d62e3e0-72b4-484b-9600-d561597044df",
+      "class_id": 6,
+      "class": "mango-overripe",
+      "confidence": 0.7021341919898987,
+      "multiple_predictions": true,
+      "other_detection_id": "19332fff-7323-4842-a1dd-fb3b7755e299"
+    },
+    {
+      "detection_id": "19332fff-7323-4842-a1dd-fb3b7755e299",
+      "class_id": 1,
+      "class": "apple-ripe",
+      "confidence": 0.6028590798377991,
+      "multiple_predictions": true,
+      "other_detection_id": "8d62e3e0-72b4-484b-9600-d561597044df"
+    }
+  ],
+  "banana.png": [
+    {
+      "detection_id": "a86bb3ea-1d67-40df-9343-436eb5b1f0ad",
+      "class_id": 5,
+      "class": "banana-unripe",
+      "confidence": 0.9133111834526062,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "image1.png": [
+    {
+      "detection_id": "9c77d924-c36b-416c-aa8b-0bcb9a28a748",
+      "class_id": 1,
+      "class": "apple-ripe",
+      "confidence": 0.9902178645133972,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ]
+}
