@@ -2,6 +2,7 @@ import sqlite3
 import json
 from datetime import datetime
 import uuid
+import os
 
 class FruitDatabase:
     def __init__(self, db_path="data/fruits.db"):

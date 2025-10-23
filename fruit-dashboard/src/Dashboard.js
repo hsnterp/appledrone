@@ -2,81 +2,115 @@ import { useState, useEffect, useRef } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { Apple, Circle, Info, ChevronLeft, ChevronRight } from 'lucide-react';
 
-// Mock data based on your sample JSON
-const mockSessionId = "session-2025-10-18";
+// API base URL - change this if your Flask server runs on a different port
+const API_BASE_URL = 'http://localhost:5000/api';
 
 const Dashboard = () => {
   const [sessionData, setSessionData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [selectedFruitIndex, setSelectedFruitIndex] = useState(0);
+  const [fruitRipenessData, setFruitRipenessData] = useState({});
+  const [sessionId, setSessionId] = useState('test_session_002'); // Default session ID
   const videoRef = useRef(null);
-  
+
   const fruits = ['apple', 'banana', 'mango'];
   const selectedFruit = fruits[selectedFruitIndex];
-  
+
   const handlePrevFruit = () => {
     setSelectedFruitIndex((prev) => (prev === 0 ? fruits.length - 1 : prev - 1));
   };
-  
+
   const handleNextFruit = () => {
     setSelectedFruitIndex((prev) => (prev === fruits.length - 1 ? 0 : prev + 1));
   };
-  
-  // Fruit-specific ripeness data
-  const fruitRipenessData = {
-    apple: { ripe: 1, unripe: 0, overripe: 1, total: 2 },
-    banana: { ripe: 0, unripe: 0, overripe: 0, total: 0 },
-    mango: { ripe: 1, unripe: 0, overripe: 0, total: 1 }
-  };
-  
+
+  // Fetch fruit-specific ripeness data
   useEffect(() => {
-    // Simulate fetching data from your backend
-    const fetchData = () => {
-      setLoading(true);
-      
-      // Processed data based on your sample JSON
-      const data = {
-        sessionId: mockSessionId,
-        timestamp: new Date().toISOString(),
-        fruitCounts: [
-          { name: 'Apple', value: 2 },
-          { name: 'Mango', value: 1 },
-          { name: 'Banana', value: 0 }
-        ],
-        ripenessDistribution: [
-          { name: 'Ripe', value: 2 },
-          { name: 'Unripe', value: 0 },
-          { name: 'Overripe', value: 1 }
-        ],
-        uncertainDetections: [
-          {
-            id: "ada0b584-be88-4a57-92b6-6157bd085919",
-            image: "citra27.jpg",
-            primaryClass: "mango-overripe",
-            confidence: 0.70,
-            alternateClass: "apple-ripe",
-            alternateConfidence: 0.60
-          }
-        ],
-        sessionStats: {
-          totalScanned: 4,
-          totalDetected: 3,
-          dateRange: "Oct 10 - Oct 18",
-          changeFromLastSession: 12.5
-        }
-      };
-      
-      setSessionData(data);
-      setLoading(false);
+    const fetchFruitRipeness = async (fruitType) => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/fruit/${fruitType}/ripeness`);
+        if (!response.ok) throw new Error(`Failed to fetch ${fruitType} ripeness data`);
+        const data = await response.json();
+        return data;
+      } catch (err) {
+        console.error(`Error fetching ${fruitType} ripeness:`, err);
+        return { ripe: 0, unripe: 0, overripe: 0, total: 0 };
+      }
     };
-    
+
+    const loadAllFruitRipeness = async () => {
+      const ripenessData = {};
+      for (const fruit of fruits) {
+        ripenessData[fruit] = await fetchFruitRipeness(fruit);
+      }
+      setFruitRipenessData(ripenessData);
+    };
+
+    if (sessionData) {
+      loadAllFruitRipeness();
+    }
+  }, [sessionData]);
+
+  // Fetch session data from Flask backend
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        // Fetch session stats
+        const response = await fetch(`${API_BASE_URL}/session/${sessionId}/stats`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch session data');
+        }
+
+        const data = await response.json();
+
+        // Add mock values for fields not yet in API
+        const enhancedData = {
+          ...data,
+          sessionStats: {
+            ...data.sessionStats,
+            dateRange: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            changeFromLastSession: 0 // This would need to be calculated from comparing sessions
+          }
+        };
+
+        setSessionData(enhancedData);
+      } catch (err) {
+        console.error('Error fetching data:', err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchData();
-  }, []);
+  }, [sessionId]);
   
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-white">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-white">
+        <div className="text-red-600 text-xl mb-4">Error loading data</div>
+        <div className="text-gray-600">{error}</div>
+        <div className="text-sm text-gray-500 mt-4">Make sure the Flask server is running on port 5000</div>
+      </div>
+    );
+  }
+
+  if (!sessionData) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-white">
+        <div className="text-gray-600">No session data available</div>
       </div>
     );
   }
@@ -317,65 +351,65 @@ const Dashboard = () => {
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-sm text-gray-600">Ripe</span>
                     <span className="text-2xl font-bold text-green-600">
-                      {fruitRipenessData[selectedFruit].ripe}
+                      {fruitRipenessData[selectedFruit]?.ripe || 0}
                     </span>
                   </div>
                   <div className="w-full bg-gray-100 rounded-full h-2">
-                    <div 
-                      className="bg-green-500 h-2 rounded-full" 
-                      style={{ 
-                        width: `${fruitRipenessData[selectedFruit].total > 0 
-                          ? (fruitRipenessData[selectedFruit].ripe / fruitRipenessData[selectedFruit].total) * 100 
-                          : 0}%` 
+                    <div
+                      className="bg-green-500 h-2 rounded-full"
+                      style={{
+                        width: `${fruitRipenessData[selectedFruit]?.total > 0
+                          ? (fruitRipenessData[selectedFruit].ripe / fruitRipenessData[selectedFruit].total) * 100
+                          : 0}%`
                       }}
                     ></div>
                   </div>
                 </div>
-                
+
                 <div className="border-b border-gray-100 pb-4">
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-sm text-gray-600">Unripe</span>
                     <span className="text-2xl font-bold text-yellow-600">
-                      {fruitRipenessData[selectedFruit].unripe}
+                      {fruitRipenessData[selectedFruit]?.unripe || 0}
                     </span>
                   </div>
                   <div className="w-full bg-gray-100 rounded-full h-2">
-                    <div 
-                      className="bg-yellow-400 h-2 rounded-full" 
-                      style={{ 
-                        width: `${fruitRipenessData[selectedFruit].total > 0 
-                          ? (fruitRipenessData[selectedFruit].unripe / fruitRipenessData[selectedFruit].total) * 100 
-                          : 0}%` 
+                    <div
+                      className="bg-yellow-400 h-2 rounded-full"
+                      style={{
+                        width: `${fruitRipenessData[selectedFruit]?.total > 0
+                          ? (fruitRipenessData[selectedFruit].unripe / fruitRipenessData[selectedFruit].total) * 100
+                          : 0}%`
                       }}
                     ></div>
                   </div>
                 </div>
-                
+
                 <div className="pb-4">
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-sm text-gray-600">Overripe</span>
                     <span className="text-2xl font-bold text-red-600">
-                      {fruitRipenessData[selectedFruit].overripe}
+                      {fruitRipenessData[selectedFruit]?.overripe || 0}
                     </span>
                   </div>
                   <div className="w-full bg-gray-100 rounded-full h-2">
-                    <div 
-                      className="bg-red-500 h-2 rounded-full" 
-                      style={{ 
-                        width: `${fruitRipenessData[selectedFruit].total > 0 
-                          ? (fruitRipenessData[selectedFruit].overripe / fruitRipenessData[selectedFruit].total) * 100 
-                          : 0}%` 
+                    <div
+                      className="bg-red-500 h-2 rounded-full"
+                      style={{
+                        width: `${fruitRipenessData[selectedFruit]?.total > 0
+                          ? (fruitRipenessData[selectedFruit].overripe / fruitRipenessData[selectedFruit].total) * 100
+                          : 0}%`
                       }}
                     ></div>
                   </div>
                 </div>
               </div>
-              
+
               <div className="mt-6 pt-6 border-t border-gray-100">
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-500 capitalize">Total {selectedFruit}s</span>
                   <span className="text-3xl font-bold text-gray-800">
-                    {fruitRipenessData[selectedFruit].total}
+                    {fruitRipenessData[selectedFruit]?.total || 0}
                   </span>
                 </div>
               </div>
