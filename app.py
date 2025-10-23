@@ -8,10 +8,18 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from database.db_setup import FruitDatabase
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for React frontend
+# Enable CORS for React frontend (allows requests from localhost:3000)
+CORS(app, resources={r"/api/*": {"origins": ["http://localhost:3000", "http://127.0.0.1:3000"]}})
 
 # Initialize database
 db = FruitDatabase()
+
+# Add request logging for debugging
+@app.after_request
+def after_request(response):
+    from flask import request
+    print(f"Request: {request.method} {request.path} -> {response.status_code}")
+    return response
 
 @app.route('/api/session/<session_id>/stats', methods=['GET'])
 def get_session_stats(session_id):
@@ -124,4 +132,5 @@ def health_check():
     return jsonify({'status': 'healthy'})
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    # Run on all interfaces (0.0.0.0) to allow connections from React dev server
+    app.run(debug=True, host='0.0.0.0', port=5000)
