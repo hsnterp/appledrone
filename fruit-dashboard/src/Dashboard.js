@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { Apple, Circle, Info, ChevronLeft, ChevronRight } from 'lucide-react';
+import OrchardMap from './OrchardMap';
 
 // API base URL - change this if your Flask server runs on a different port
 const API_BASE_URL = 'http://localhost:5000/api';
@@ -11,7 +12,7 @@ const Dashboard = () => {
   const [error, setError] = useState(null);
   const [selectedFruitIndex, setSelectedFruitIndex] = useState(0);
   const [fruitRipenessData, setFruitRipenessData] = useState({});
-  const [sessionId, setSessionId] = useState('test_session_002'); // Default session ID
+  const [sessionId, setSessionId] = useState(null); // Will be auto-fetched
   const videoRef = useRef(null);
 
   const fruits = ['apple', 'banana', 'mango'];
@@ -24,6 +25,31 @@ const Dashboard = () => {
   const handleNextFruit = () => {
     setSelectedFruitIndex((prev) => (prev === fruits.length - 1 ? 0 : prev + 1));
   };
+
+  // Fetch latest session ID on mount
+  useEffect(() => {
+    const fetchLatestSession = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/sessions`);
+        if (!response.ok) throw new Error('Failed to fetch sessions');
+        const sessions = await response.json();
+
+        if (sessions && sessions.length > 0) {
+          // Use the most recent session (first in the list)
+          const latestSession = sessions[0].sessionId;
+          setSessionId(latestSession);
+        } else {
+          throw new Error('No sessions found. Please run detection first.');
+        }
+      } catch (err) {
+        console.error('Error fetching latest session:', err);
+        setError(err.message);
+        setLoading(false);
+      }
+    };
+
+    fetchLatestSession();
+  }, []);
 
   // Fetch fruit-specific ripeness data
   useEffect(() => {
@@ -54,6 +80,9 @@ const Dashboard = () => {
 
   // Fetch session data from Flask backend
   useEffect(() => {
+    // Don't fetch if sessionId hasn't been loaded yet
+    if (!sessionId) return;
+
     const fetchData = async () => {
       setLoading(true);
       setError(null);
@@ -123,8 +152,8 @@ const Dashboard = () => {
   
   const FRUIT_COLORS = {
     apple: '#f87171',
-    mango: '#fbbf24',
-    banana: '#facc15'
+    mango: '#fb923c',
+    banana: '#fde047'
   };
   
   const totalFruits = sessionData.fruitCounts.reduce((acc, curr) => acc + curr.value, 0);
@@ -146,7 +175,7 @@ const Dashboard = () => {
         <div className="flex justify-between items-center w-full px-4">
           <div className="flex items-center space-x-3">
             <Apple size={24} className="text-blue-600" />
-            <h1 className="text-xl font-bold text-gray-900">FruitScan</h1>
+            <h1 className="text-xl font-bold text-gray-900">Pomona</h1>
           </div>
           <div className="bg-gray-100 text-sm text-gray-600 px-4 py-2 rounded-md">
             {sessionData.sessionStats.dateRange}
@@ -156,7 +185,7 @@ const Dashboard = () => {
       
       <main className="w-full px-8 py-8">
         <div className="mb-8 px-4">
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Harvest Overview</h2>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2 trajan-header">Harvest Overview</h2>
           <p className="text-gray-500 text-sm">Latest drone scan session summary and insights</p>
         </div>
         
@@ -213,7 +242,7 @@ const Dashboard = () => {
           {/* Fruit Distribution Chart */}
           <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-gray-800">Fruit Distribution</h3>
+              <h3 className="text-lg font-semibold text-gray-800 trajan-header">Fruit Distribution</h3>
             </div>
             <div className="flex flex-col items-center justify-center" style={{ height: "400px" }}>
               <div style={{ width: '100%', height: '85%' }}>
@@ -231,9 +260,9 @@ const Dashboard = () => {
                       label={({name, percent}) => `${name}: ${percent}%`}
                     >
                       {fruitDonutData.map((entry, index) => (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={Object.values(FRUIT_COLORS)[index % Object.values(FRUIT_COLORS).length]} 
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={FRUIT_COLORS[entry.name.toLowerCase()] || '#9ca3af'}
                         />
                       ))}
                     </Pie>
@@ -256,7 +285,7 @@ const Dashboard = () => {
           {/* Ripeness Distribution */}
           <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-gray-800">Ripeness Distribution</h3>
+              <h3 className="text-lg font-semibold text-gray-800 trajan-header">Ripeness Distribution</h3>
             </div>
             <div className="flex flex-col items-center justify-center" style={{ height: "400px" }}>
               <div style={{ width: '100%', height: '85%' }}>
@@ -343,7 +372,7 @@ const Dashboard = () => {
                 {selectedFruit === 'apple' && <Apple size={20} className="text-red-500" />}
                 {selectedFruit === 'banana' && <span className="text-2xl">🍌</span>}
                 {selectedFruit === 'mango' && <span className="text-2xl">🥭</span>}
-                <h3 className="text-lg font-semibold text-gray-800 capitalize">{selectedFruit} Ripeness</h3>
+                <h3 className="text-lg font-semibold text-gray-800 capitalize trajan-header">{selectedFruit} Ripeness</h3>
               </div>
               
               <div className="space-y-4">
@@ -416,6 +445,20 @@ const Dashboard = () => {
             </div>
           </div>
         </div>
+        {/* 3D Orchard View */}
+        {sessionId && (
+          <div className="mt-10 px-4">
+            <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
+              <div className="mb-4">
+                <h3 className="text-lg font-semibold text-gray-800 trajan-header">3D Orchard View</h3>
+                <p className="text-gray-400 text-xs mt-1">Drag to rotate &middot; Scroll to zoom &middot; Hover for details</p>
+              </div>
+              <div style={{ height: '500px' }}>
+                <OrchardMap sessionId={sessionId} />
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

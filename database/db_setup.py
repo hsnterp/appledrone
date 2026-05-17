@@ -47,8 +47,24 @@ class FruitDatabase:
         """)
         
         conn.commit()
+
+        # Migration: add new columns if they don't already exist
+        migrations = [
+            "ALTER TABLE detections ADD COLUMN bbox_x REAL",
+            "ALTER TABLE detections ADD COLUMN bbox_y REAL",
+            "ALTER TABLE detections ADD COLUMN bbox_w REAL",
+            "ALTER TABLE detections ADD COLUMN bbox_h REAL",
+            "ALTER TABLE detections ADD COLUMN distance_cm REAL",
+        ]
+        for migration in migrations:
+            try:
+                cursor.execute(migration)
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+        conn.commit()
+
         conn.close()
-    
+
     def save_detections(self, json_data, session_id=None, confidence_threshold=0.30):
         """
         Save detections with uncertainty logic:
@@ -66,6 +82,10 @@ class FruitDatabase:
         
         for image_file, detections in json_data.items():
             for detection in detections:
+                # Skip if this detection is an error
+                if 'error' in detection:
+                    continue
+
                 if detection['class'] == 'No detection':
                     continue
                 
@@ -104,12 +124,30 @@ class FruitDatabase:
                         processed_ids.add(detection_id)
                         processed_ids.add(detection['other_detection_id'])
                 
+                bbox_x = detection.get('bbox_x')
+                bbox_y = detection.get('bbox_y')
+                bbox_w = detection.get('bbox_w')
+                bbox_h = detection.get('bbox_h')
+                distance_cm = None
+                if bbox_w and bbox_h:
+                    focal_length_px = 1850
+                    real_diameters = {
+                        'apple':  {'ripe': 7.5, 'unripe': 5.5, 'overripe': 7.0},
+                        'banana': {'ripe': 3.5, 'unripe': 3.0, 'overripe': 4.0},
+                        'mango':  {'ripe': 8.0, 'unripe': 6.0, 'overripe': 8.5},
+                    }
+                    real_cm = real_diameters.get(fruit_type, {}).get(ripeness, 6.5)
+                    pixel_diameter = max(bbox_w, bbox_h)
+                    if pixel_diameter > 0:
+                        distance_cm = round((focal_length_px * real_cm) / pixel_diameter, 1)
+
                 cursor.execute("""
-                    INSERT OR IGNORE INTO detections 
-                    (detection_id, image_filename, fruit_type, ripeness, 
-                    confidence, has_multiple_predictions, linked_detection_id, 
-                    is_uncertain, final_classification, session_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT OR IGNORE INTO detections
+                    (detection_id, image_filename, fruit_type, ripeness,
+                    confidence, has_multiple_predictions, linked_detection_id,
+                    is_uncertain, final_classification, session_id,
+                    bbox_x, bbox_y, bbox_w, bbox_h, distance_cm)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     detection_id,
                     image_file,
@@ -120,9 +158,26 @@ class FruitDatabase:
                     detection['other_detection_id'],
                     is_uncertain,
                     final_classification,
-                    session_id
+                    session_id,
+                    bbox_x,
+                    bbox_y,
+                    bbox_w,
+                    bbox_h,
+                    distance_cm,
                 ))
-        
+
+        # Count total detections for this session
+        cursor.execute("""
+            SELECT COUNT(*) FROM detections WHERE session_id = ?
+        """, (session_id,))
+        total_detections = cursor.fetchone()[0]
+
+        # Insert or update session record
+        cursor.execute("""
+            INSERT OR REPLACE INTO sessions (session_id, start_time, total_detections)
+            VALUES (?, ?, ?)
+        """, (session_id, datetime.now(), total_detections))
+
         conn.commit()
         conn.close()
         return session_id
@@ -231,13 +286,26 @@ class FruitDatabase:
         """List all sessions"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
+
         cursor.execute("""
             SELECT session_id, start_time, total_detections
             FROM sessions
             ORDER BY start_time DESC
         """)
-        
+
+        results = cursor.fetchall()
+        conn.close()
+        return results
+
+    def get_detections_for_session(self, session_id):
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT detection_id, image_filename, fruit_type, ripeness,
+                   confidence, is_uncertain, final_classification
+            FROM detections WHERE session_id = ?
+            ORDER BY confidence DESC
+        """, (session_id,))
         results = cursor.fetchall()
         conn.close()
         return results

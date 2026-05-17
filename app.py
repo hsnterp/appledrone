@@ -14,12 +14,13 @@ CORS(app, resources={r"/api/*": {"origins": ["http://localhost:3000", "http://12
 # Initialize database
 db = FruitDatabase()
 
-# Add request logging for debugging
-@app.after_request
-def after_request(response):
-    from flask import request
-    print(f"Request: {request.method} {request.path} -> {response.status_code}")
-    return response
+# Request logging disabled to prevent terminal I/O blocking
+# Uncomment below if you need to debug API requests
+# @app.after_request
+# def after_request(response):
+#     from flask import request
+#     print(f"Request: {request.method} {request.path} -> {response.status_code}")
+#     return response
 
 @app.route('/api/session/<session_id>/stats', methods=['GET'])
 def get_session_stats(session_id):
@@ -123,6 +124,27 @@ def get_sessions():
             for session_id, start_time, total_detections in sessions
         ]
         return jsonify(sessions_list)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/session/<session_id>/detections', methods=['GET'])
+def get_session_detections(session_id):
+    try:
+        detections = db.get_detections_for_session(session_id)
+        return jsonify({
+            'detections': [
+                {
+                    'id': det_id or f'det-{i}',
+                    'image': img,
+                    'fruitType': fruit,
+                    'ripeness': ripeness,
+                    'confidence': conf,
+                    'isUncertain': bool(uncertain),
+                    'classification': classification
+                }
+                for i, (det_id, img, fruit, ripeness, conf, uncertain, classification) in enumerate(detections)
+            ]
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
