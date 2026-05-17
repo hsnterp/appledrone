@@ -9,7 +9,13 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  
+
+}
+
+/* Trajan-style font for headers */
+.trajan-header {
+  font-family: 'Cinzel', serif;
+  letter-spacing: 0.05em;
 }
 
 code {

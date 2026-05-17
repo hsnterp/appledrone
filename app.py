@@ -8,10 +8,19 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from database.db_setup import FruitDatabase
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for React frontend
+# Enable CORS for React frontend (allows requests from localhost:3000)
+CORS(app, resources={r"/api/*": {"origins": ["http://localhost:3000", "http://127.0.0.1:3000"]}})
 
 # Initialize database
 db = FruitDatabase()
+
+# Request logging disabled to prevent terminal I/O blocking
+# Uncomment below if you need to debug API requests
+# @app.after_request
+# def after_request(response):
+#     from flask import request
+#     print(f"Request: {request.method} {request.path} -> {response.status_code}")
+#     return response
 
 @app.route('/api/session/<session_id>/stats', methods=['GET'])
 def get_session_stats(session_id):
@@ -118,10 +127,32 @@ def get_sessions():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/session/<session_id>/detections', methods=['GET'])
+def get_session_detections(session_id):
+    try:
+        detections = db.get_detections_for_session(session_id)
+        return jsonify({
+            'detections': [
+                {
+                    'id': det_id or f'det-{i}',
+                    'image': img,
+                    'fruitType': fruit,
+                    'ripeness': ripeness,
+                    'confidence': conf,
+                    'isUncertain': bool(uncertain),
+                    'classification': classification
+                }
+                for i, (det_id, img, fruit, ripeness, conf, uncertain, classification) in enumerate(detections)
+            ]
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Health check endpoint"""
     return jsonify({'status': 'healthy'})
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    # Run on all interfaces (0.0.0.0) to allow connections from React dev server
+    app.run(debug=True, host='0.0.0.0', port=5000)

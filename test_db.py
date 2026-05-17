@@ -1,7 +1,12 @@
 from database.db_setup import FruitDatabase
 import json
+import os
 
-with open('/Users/hunter/Desktop/apple-drone/data/detection_results.json') as f:
+# Get the correct path relative to this script
+script_dir = os.path.dirname(os.path.abspath(__file__))
+json_path = os.path.join(script_dir, 'data', 'detection_results.json')
+
+with open(json_path) as f:
     data = json.load(f)
 
 db = FruitDatabase()
