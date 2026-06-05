@@ -1,4 +1,3 @@
-from inference_sdk import InferenceHTTPClient
 import os
 import json
 from dotenv import load_dotenv
@@ -116,6 +115,8 @@ load_dotenv(dotenv_path=env_path)
 detector_backend = os.getenv("DETECTOR_BACKEND", "locateanything").strip().lower()
 
 if detector_backend == "roboflow":
+    from inference_sdk import InferenceHTTPClient
+
     client = InferenceHTTPClient(
         api_url="https://serverless.roboflow.com",
         api_key=os.getenv("API_KEY")
