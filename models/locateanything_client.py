@@ -107,7 +107,14 @@ class LocateAnythingClient:
         request = urllib.request.Request(
             f"{self.endpoint}/detect",
             data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": (
+                    "Mozilla/5.0 AppleDroneLocateAnything/1.0 "
+                    "(https://github.com/hsnterp/appledrone)"
+                ),
+            },
             method="POST",
         )
 
