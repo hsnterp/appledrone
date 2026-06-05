@@ -1,0 +1,410 @@
+{
+  "Image_15.jpg": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_29.jpg": [
+    {
+      "detection_id": "df7c94f7-3ee7-4aaa-8aa2-1cce8e9e32dd",
+      "class_id": 1,
+      "class": "apple-ripe",
+      "confidence": 0.7961239218711853,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_28.png": [
+    {
+      "detection_id": "29accaa0-7f99-4a6f-a716-18ad015b1e8a",
+      "class_id": 5,
+      "class": "banana-unripe",
+      "confidence": 0.7579123377799988,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_14.png": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_16.jpg": [
+    {
+      "detection_id": "cb274cde-c2cc-4c59-9ea8-749e283456e6",
+      "class_id": 3,
+      "class": "banana-overripe",
+      "confidence": 0.4503113627433777,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_13.png": [
+    {
+      "detection_id": "df2ff13e-d992-4f4c-9b3e-73c657f45dc5",
+      "class_id": 1,
+      "class": "apple-ripe",
+      "confidence": 0.9873875975608826,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_12.jpg": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_38.jpg": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_10.jpg": [
+    {
+      "detection_id": "228a5a14-89c0-4b88-972a-46a0e043795c",
+      "class_id": 6,
+      "class": "mango-overripe",
+      "confidence": 0.7457469701766968,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_11.jpg": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_39.jpg": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_8.jpg": [
+    {
+      "detection_id": "96f18a01-abc5-41da-8ee5-d6fca0fb17f7",
+      "class_id": 1,
+      "class": "apple-ripe",
+      "confidence": 0.8903060555458069,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_9.jpg": [
+    {
+      "detection_id": "811c573a-5102-4780-bc46-2054b8901d04",
+      "class_id": 1,
+      "class": "apple-ripe",
+      "confidence": 0.9724586009979248,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_34.jpeg": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_40.jpeg": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_2.jpg": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_17.jpeg": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_1.jpg": [
+    {
+      "detection_id": "a725af8a-f520-4d3d-9ace-1d3e8b1bbf9d",
+      "class_id": 5,
+      "class": "banana-unripe",
+      "confidence": 0.6432634592056274,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_4.jpg": [
+    {
+      "detection_id": "0cf56d20-d1de-42e8-ba24-2e1f4c63f465",
+      "class_id": 3,
+      "class": "banana-overripe",
+      "confidence": 0.4670867919921875,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_5.jpg": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_3.jpeg": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_7.jpg": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_6.jpg": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_20.jpg": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_21.jpg": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_35.jpg": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_23.png": [
+    {
+      "detection_id": "394766f9-4a20-43f5-9423-0b516ddc107f",
+      "class_id": 6,
+      "class": "mango-overripe",
+      "confidence": 0.7786334753036499,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_37.jpg": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_36.jpg": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_22.jpg": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_26.jpg": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_32.jpg": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_33.jpg": [
+    {
+      "detection_id": "3312a184-4eae-4642-b4d9-786ec7df6471",
+      "class_id": 0,
+      "class": "apple-overripe",
+      "confidence": 0.5748234391212463,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_27.jpg": [
+    {
+      "detection_id": "decf2f77-3251-4be8-b69d-f1c233f75bec",
+      "class_id": 3,
+      "class": "banana-overripe",
+      "confidence": 0.854120671749115,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_31.png": [
+    {
+      "detection_id": "e25409f6-b62c-4814-ad1e-40c446db9e89",
+      "class_id": 1,
+      "class": "apple-ripe",
+      "confidence": 0.9347015619277954,
+      "multiple_predictions": true,
+      "other_detection_id": "b0da74af-21ab-4143-897b-e527e4b119ad"
+    },
+    {
+      "detection_id": "b0da74af-21ab-4143-897b-e527e4b119ad",
+      "class_id": 8,
+      "class": "mango-unripe",
+      "confidence": 0.7951870560646057,
+      "multiple_predictions": true,
+      "other_detection_id": "e25409f6-b62c-4814-ad1e-40c446db9e89"
+    }
+  ],
+  "Image_19.jpg": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_25.jpg": [
+    {
+      "detection_id": "fea0f58a-0267-4bde-8f96-bdd26ffaec7d",
+      "class_id": 5,
+      "class": "banana-unripe",
+      "confidence": 0.8074471354484558,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_24.jpg": [
+    {
+      "detection_id": "310cda64-1817-4cde-bc15-fdac8ea7d410",
+      "class_id": 6,
+      "class": "mango-overripe",
+      "confidence": 0.682981014251709,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_30.jpg": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ],
+  "Image_18.jpg": [
+    {
+      "detection_id": null,
+      "class_id": null,
+      "class": "No detection",
+      "confidence": 0.0,
+      "multiple_predictions": false,
+      "other_detection_id": null
+    }
+  ]
+}
