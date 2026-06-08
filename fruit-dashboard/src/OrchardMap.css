@@ -1,0 +1,227 @@
+/* =====================================================================
+   OrchardMap.css — "naturalist's field sketchbook" theme, scoped to the
+   embedded OrchardMap container. Ported from the design handoff
+   (design/orchard/orchard.css); overlays are positioned relative to the
+   .orchard-map wrapper instead of the viewport so the map works inside
+   the dashboard card.
+   Newsreader (serif) · Caveat (marginalia) · JetBrains Mono (data)
+   ===================================================================== */
+.orchard-map {
+  --paper:   #EAE0CC;
+  --paper-hi:#F2EADA;
+  --card:    #F5EEDD;
+  --ink:     #2E2A22;
+  --ink-soft:#6B6354;
+  --rule:    #D2C4A6;
+  --grid:    #C8B894;
+  --ripe:    #5F8A4C;
+  --unripe:  #C9A227;
+  --overripe:#A8482F;
+  --uncertain:#C2702E;
+  --serif: 'Newsreader', Georgia, serif;
+  --hand:  'Caveat', cursive;
+  --mono:  'JetBrains Mono', ui-monospace, monospace;
+
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--serif);
+  -webkit-font-smoothing: antialiased;
+}
+.orchard-map * { box-sizing: border-box; }
+
+/* scene canvas fills the wrapper; overlays sit on top */
+.orchard-map canvas { display: block; }
+
+/* subtle edge vignette over the whole stage */
+.orchard-map::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 5;
+  background: radial-gradient(120% 90% at 50% 40%, transparent 58%, rgba(46,42,34,0.10) 100%);
+  mix-blend-mode: multiply;
+}
+
+/* projected tree-label + UI overlay layers */
+.orchard-map .labels,
+.orchard-map .ui { position: absolute; inset: 0; z-index: 10; pointer-events: none; }
+.orchard-map .ui > * { pointer-events: auto; }
+
+/* =================== top summary bar =============================== */
+.orchard-map .bar {
+  position: absolute; top: 14px; left: 14px; right: 14px;
+  display: flex; align-items: center; gap: 26px;
+  padding: 12px 20px;
+  background: var(--card);
+  border: 1.5px solid var(--ink);
+  border-radius: 3px;
+  box-shadow: 3px 3px 0 rgba(46,42,34,0.16);
+  pointer-events: auto;
+}
+.orchard-map .brand { display: flex; align-items: center; gap: 11px; }
+.orchard-map .brand-mark { font-size: 26px; line-height: 1; color: var(--ripe); transform: translateY(-1px); }
+.orchard-map .brand-name { font-size: 24px; font-weight: 600; letter-spacing: .01em; }
+.orchard-map .brand-sub  { font-family: var(--hand); font-size: 18px; color: var(--ink-soft); margin-top: -4px; line-height: 1; }
+.orchard-map .bar-total {
+  display: flex; align-items: baseline; gap: 9px;
+  padding-left: 26px; margin-left: 4px;
+  border-left: 1.5px solid var(--rule);
+}
+.orchard-map .bt-num { font-size: 40px; font-weight: 600; line-height: 1; }
+.orchard-map .bt-lbl { font-family: var(--hand); font-size: 17px; color: var(--ink-soft); line-height: .95; }
+.orchard-map .bar-meta {
+  margin-left: auto; display: grid; gap: 2px;
+  font-family: var(--mono); font-size: 11px; color: var(--ink-soft);
+}
+.orchard-map .bm-row { display: flex; gap: 10px; justify-content: flex-end; }
+.orchard-map .bm-row span { opacity: .7; }
+.orchard-map .bm-row b { color: var(--ink); font-weight: 500; white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+
+/* =================== ripeness legend / filter ====================== */
+.orchard-map .legend {
+  position: absolute; left: 14px; bottom: 14px;
+  background: var(--card); border: 1.5px solid var(--ink); border-radius: 3px;
+  padding: 12px 14px 13px; box-shadow: 3px 3px 0 rgba(46,42,34,0.16);
+  pointer-events: auto; width: 210px;
+}
+.orchard-map .legend-cap {
+  font-size: 12px; color: var(--ink-soft); margin-bottom: 9px;
+  text-transform: uppercase; letter-spacing: .08em;
+}
+.orchard-map .legend-cap em { font-family: var(--hand); font-style: normal; font-size: 15px; text-transform: none; letter-spacing: 0; }
+.orchard-map .legend-rows { display: grid; gap: 5px; }
+.orchard-map .leg-chip {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  background: transparent; border: 1.5px solid transparent; border-radius: 3px;
+  padding: 5px 8px; cursor: pointer; font-family: var(--serif);
+  color: var(--ink); transition: border-color .15s, background .15s, opacity .15s;
+}
+.orchard-map .leg-chip:hover { background: rgba(46,42,34,0.05); }
+.orchard-map .leg-chip.active { border-color: var(--ink); background: rgba(46,42,34,0.06); }
+.orchard-map .leg-chip.dim { opacity: .42; }
+.orchard-map .leg-dot { width: 13px; height: 13px; border-radius: 50%; border: 1.5px solid rgba(46,42,34,0.55); flex: none; }
+.orchard-map .leg-name { font-size: 16px; flex: 1; text-align: left; }
+.orchard-map .leg-n { font-family: var(--mono); font-size: 13px; color: var(--ink-soft); }
+
+/* =================== tree label chips ============================== */
+.orchard-map .tree-chip {
+  position: absolute; top: 0; left: 0; will-change: transform; display: none;
+  align-items: center; gap: 0;
+  background: var(--card); border: 1.5px solid var(--ink); border-radius: 3px;
+  padding: 3px 9px; cursor: pointer; pointer-events: auto;
+  font-family: var(--mono); font-size: 12px; color: var(--ink);
+  box-shadow: 2px 2px 0 rgba(46,42,34,0.16);
+  transition: box-shadow .15s;
+}
+.orchard-map .tree-chip::after {
+  content: ""; position: absolute; left: 50%; top: 100%;
+  width: 1.5px; height: 14px; background: var(--ink); transform: translateX(-50%);
+}
+.orchard-map .tc-id { font-weight: 600; letter-spacing: .02em; }
+.orchard-map .tc-detail {
+  display: none; align-items: center; gap: 7px;
+  margin-left: 9px; padding-left: 9px; border-left: 1.5px solid var(--rule);
+}
+.orchard-map .tc-count { font-weight: 600; }
+.orchard-map .tc-dom { display: inline-flex; align-items: center; gap: 5px; font-family: var(--serif); font-size: 13px; color: var(--ink-soft); }
+.orchard-map .tc-dom::before {
+  content: ""; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--dot); border: 1px solid rgba(46,42,34,0.4);
+}
+.orchard-map .tree-chip.is-hover, .orchard-map .tree-chip.is-selected { box-shadow: 3px 3px 0 rgba(46,42,34,0.28); z-index: 3; }
+.orchard-map .tree-chip.is-hover .tc-detail, .orchard-map .tree-chip.is-selected .tc-detail { display: flex; }
+.orchard-map .tree-chip.is-selected { background: var(--ink); color: var(--paper-hi); }
+.orchard-map .tree-chip.is-selected .tc-dom { color: var(--paper); }
+.orchard-map .tree-chip.is-selected::after { background: var(--ink); }
+
+/* =================== fruit hover tooltip =========================== */
+.orchard-map .tooltip {
+  position: absolute; z-index: 40; display: none; pointer-events: none;
+  min-width: 168px; max-width: 230px;
+  background: var(--card); border: 1.5px solid var(--ink); border-radius: 3px;
+  padding: 9px 12px; box-shadow: 3px 3px 0 rgba(46,42,34,0.22);
+}
+.orchard-map .tt-head { display: flex; align-items: center; gap: 7px; font-size: 16px; text-transform: capitalize; margin-bottom: 5px; }
+.orchard-map .tt-head em { font-style: italic; color: var(--ink-soft); }
+.orchard-map .tt-dot { width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid rgba(46,42,34,0.5); }
+.orchard-map .tt-row { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); display: flex; justify-content: space-between; gap: 14px; }
+.orchard-map .tt-row b { color: var(--ink); font-weight: 500; }
+.orchard-map .tt-flag {
+  margin-top: 6px; font-family: var(--hand); font-size: 15px;
+  color: var(--uncertain); border-top: 1px dashed var(--rule); padding-top: 5px;
+}
+
+/* =================== tree detail panel (journal page) ============== */
+.orchard-map .panel {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 340px; max-width: 86%;
+  background: var(--card);
+  border-left: 1.5px solid var(--ink);
+  box-shadow: -8px 0 28px rgba(46,42,34,0.16);
+  padding: 20px 22px; overflow-y: auto; z-index: 20;
+  pointer-events: auto;
+  background-image: repeating-linear-gradient(var(--card) 0 31px, var(--rule) 31px 32px);
+  background-position: 0 96px;
+}
+.orchard-map .panel-close { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); background: none; border: none; cursor: pointer; padding: 0 0 14px; }
+.orchard-map .panel-close:hover { color: var(--ink); }
+.orchard-map .panel-head { border-bottom: 2px solid var(--ink); padding-bottom: 8px; margin-bottom: 16px; }
+.orchard-map .ph-id { font-size: 44px; font-weight: 600; line-height: .9; }
+.orchard-map .ph-meta { font-family: var(--hand); font-size: 19px; color: var(--ink-soft); margin-top: 2px; }
+.orchard-map .panel-figure { display: grid; grid-template-columns: auto 1fr; align-items: baseline; column-gap: 12px; margin-bottom: 22px; }
+.orchard-map .pf-num { font-size: 58px; font-weight: 600; line-height: .85; grid-row: span 2; }
+.orchard-map .pf-lbl { font-family: var(--hand); font-size: 19px; color: var(--ink-soft); align-self: end; }
+.orchard-map .pf-dom { font-size: 15px; color: var(--ink-soft); display: flex; align-items: center; gap: 7px; }
+.orchard-map .pf-dom b { color: var(--ink); font-weight: 600; }
+.orchard-map .pf-dom::before {
+  content: ""; width: 11px; height: 11px; border-radius: 50%;
+  background: var(--dot); border: 1.5px solid rgba(46,42,34,0.45);
+}
+.orchard-map .panel-sec { margin-bottom: 22px; }
+.orchard-map .sec-cap {
+  font-size: 12px; text-transform: uppercase; letter-spacing: .09em;
+  color: var(--ink-soft); margin-bottom: 11px;
+  border-bottom: 1px dashed var(--rule); padding-bottom: 5px;
+}
+.orchard-map .rb { margin-bottom: 11px; }
+.orchard-map .rb-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.orchard-map .rb-name { display: flex; align-items: center; gap: 7px; font-size: 16px; }
+.orchard-map .rb-dot { width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid rgba(46,42,34,0.4); }
+.orchard-map .rb-val { font-family: var(--mono); font-size: 14px; }
+.orchard-map .rb-track { height: 9px; background: rgba(46,42,34,0.08); border: 1px solid var(--rule); border-radius: 2px; overflow: hidden; }
+.orchard-map .rb-fill { height: 100%; }
+.orchard-map .note-clean { font-family: var(--hand); font-size: 18px; color: var(--ink-soft); margin: 0; }
+.orchard-map .note-list { list-style: none; margin: 0; padding: 0; }
+.orchard-map .nl-head { font-family: var(--hand); font-size: 18px; color: var(--uncertain); margin-bottom: 7px; }
+.orchard-map .nl-item { display: flex; align-items: center; gap: 9px; padding: 5px 0; border-bottom: 1px dashed var(--rule); font-size: 14px; }
+.orchard-map .nl-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--uncertain); flex: none; }
+.orchard-map .nl-txt { flex: 1; }
+.orchard-map .nl-conf { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); }
+.orchard-map .panel-coords { font-family: var(--mono); font-size: 11px; color: var(--ink-soft); margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--rule); }
+
+/* =================== hint ========================================== */
+.orchard-map .hint {
+  position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+  font-family: var(--hand); font-size: 17px; color: var(--ink-soft);
+  background: rgba(245,238,221,0.75); padding: 3px 14px; border-radius: 20px;
+  pointer-events: none; z-index: 10; white-space: nowrap;
+}
+
+/* =================== loading / empty splash ======================= */
+.orchard-map .splash {
+  position: absolute; inset: 0; z-index: 60; display: flex;
+  align-items: center; justify-content: center; flex-direction: column; gap: 12px;
+  background: var(--paper-hi); font-family: var(--hand);
+  color: var(--ink-soft); font-size: 22px; text-align: center; padding: 0 24px;
+}
+.orchard-map .splash .spin {
+  width: 30px; height: 30px; border: 2.5px solid var(--rule);
+  border-top-color: var(--ink); border-radius: 50%; animation: orchard-sp 0.9s linear infinite;
+}
+.orchard-map .splash.error { color: var(--overripe); }
+@keyframes orchard-sp { to { transform: rotate(360deg); } }
+
+@media (max-width: 820px) {
+  .orchard-map .bar { flex-wrap: wrap; gap: 14px; }
+  .orchard-map .bar-meta { display: none; }
+}
