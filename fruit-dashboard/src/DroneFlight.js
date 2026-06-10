@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 
 /* =====================================================================
@@ -169,9 +169,10 @@ function makeFrustum() {
 /* ------------------------------------------------------------------ */
 const TRAIL_N = 360;
 
-export function DroneFlight({ targets, simRef, progressRef }) {
+export function DroneFlight({ targets, simRef, progressRef, followRef, controlsRef, onCaptureChange }) {
   const groupRef = useRef();
   const propsRef = useRef([]);
+  const { camera } = useThree();
 
   /* mission plan: waypoints → CatmullRom curve → timed phase schedule */
   const flight = useMemo(() => {
@@ -194,13 +195,17 @@ export function DroneFlight({ targets, simRef, progressRef }) {
 
     // waypoints: pad → climb → standoff per tree → return → land
     const pts = [new THREE.Vector3(0, 0.03, 0), new THREE.Vector3(0, CRUISE_H, 0)];
-    const captures = [];   // { index into pts, look target }
+    const captures = [];   // { index into pts, look target, capture metadata }
     ordered.forEach((t) => {
       const d = Math.hypot(t.x, t.z) || 1;
       const ux = t.x / d, uz = t.z / d;
       const sd = Math.max(d - STANDOFF, 0.45);   // hold short of the tree
       pts.push(new THREE.Vector3(ux * sd, CRUISE_H, uz * sd));
-      captures.push({ index: pts.length - 1, look: new THREE.Vector3(t.x, CRUISE_H, t.z) });
+      captures.push({
+        index: pts.length - 1,
+        look: new THREE.Vector3(t.x, CRUISE_H, t.z),
+        target: t
+      });
     });
     pts.push(new THREE.Vector3(0, CRUISE_H, 0));
     pts.push(new THREE.Vector3(0, 0.03, 0));
@@ -218,7 +223,7 @@ export function DroneFlight({ targets, simRef, progressRef }) {
       const u0 = uAt(i), u1 = uAt(i + 1);
       phases.push({ type: 'move', u0, u1, dur: Math.max(0.5, ((u1 - u0) * total) / SPEED_MPS) });
       const cap = capByIndex.get(i + 1);
-      if (cap) phases.push({ type: 'hover', u: u1, dur: HOVER_SEC, look: cap.look });
+      if (cap) phases.push({ type: 'hover', u: u1, dur: HOVER_SEC, look: cap.look, capture: cap.target });
     }
     phases.push({ type: 'hover', u: 1, dur: REST_SEC, look: null });   // rest on pad
     const duration = phases.reduce((a, p) => a + p.dur, 0);
@@ -266,8 +271,13 @@ export function DroneFlight({ targets, simRef, progressRef }) {
     pos: new THREE.Vector3(),
     tan: new THREE.Vector3(),
     p1: new THREE.Vector3(),
-    p2: new THREE.Vector3()
+    p2: new THREE.Vector3(),
+    look: new THREE.Vector3(),
+    cameraPos: new THREE.Vector3(),
+    cameraOffset: new THREE.Vector3(0, 0.34, -0.95),
+    forwardOffset: new THREE.Vector3(0, 0, 3)
   }), []);
+  const lastCaptureKey = useRef(null);
 
   useFrame((rstate, delta) => {
     if (!flight || !objects || !groupRef.current) return;
@@ -326,6 +336,22 @@ export function DroneFlight({ targets, simRef, progressRef }) {
     st.pitch += (speedEnv * 0.13 - st.pitch) * Math.min(1, delta * 5);
     g.rotation.set(st.pitch, st.yaw, st.roll);
 
+    // Follow mode: put the scene camera at the drone's lens and look where
+    // the drone camera is aimed. OrbitControls is disabled while this is on.
+    if (followRef?.current?.enabled) {
+      scratch.cameraPos.copy(scratch.cameraOffset).applyEuler(g.rotation).add(g.position);
+      camera.position.lerp(scratch.cameraPos, Math.min(1, delta * 8));
+      if (phase.type === 'hover' && phase.look) {
+        scratch.look.copy(phase.look);
+      } else {
+        scratch.look.copy(scratch.forwardOffset).applyEuler(g.rotation).add(g.position);
+      }
+      camera.lookAt(scratch.look);
+      if (controlsRef?.current) {
+        controlsRef.current.target.copy(scratch.look);
+      }
+    }
+
     // spinning props (alternating direction)
     for (let i = 0; i < 4; i++) {
       const p = propsRef.current[i];
@@ -346,6 +372,14 @@ export function DroneFlight({ targets, simRef, progressRef }) {
     // HUD progress bar (imperative — no React re-render per frame)
     const pr = progressRef.current;
     if (pr) pr.style.width = ((t / flight.duration) * 100).toFixed(1) + '%';
+
+    // Notify React only when the active photo stop changes.
+    const capture = phase.type === 'hover' && phase.capture ? phase.capture : null;
+    const captureKey = capture ? (capture.id || capture.image || `${capture.x}:${capture.z}`) : null;
+    if (captureKey !== lastCaptureKey.current) {
+      lastCaptureKey.current = captureKey;
+      if (onCaptureChange) onCaptureChange(capture);
+    }
   });
 
   if (!flight || !objects) return null;
@@ -365,7 +399,7 @@ export function DroneFlight({ targets, simRef, progressRef }) {
 /* HUD overlay: play/pause, 1×/2×/4× speed, progress. Mutates simRef    */
 /* so the animation loop never forces a scene re-render.               */
 /* ------------------------------------------------------------------ */
-export function FlightHUD({ simRef, progressRef }) {
+export function FlightHUD({ simRef, progressRef, followRef, followEnabled, setFollowEnabled }) {
   const [playing, setPlaying] = useState(true);
   const [speed, setSpeed] = useState(1);
 
@@ -378,10 +412,15 @@ export function FlightHUD({ simRef, progressRef }) {
     setSpeed(s);
     simRef.current.speed = s;
   };
+  const toggleFollow = () => {
+    const enabled = !followEnabled;
+    if (followRef?.current) followRef.current.enabled = enabled;
+    if (setFollowEnabled) setFollowEnabled(enabled);
+  };
 
   return (
     <div className="flight-hud">
-      <div className="fh-cap">Survey flight — <em>simulated</em></div>
+      <div className="fh-cap">Drone flight — <em>{followEnabled ? 'camera view' : 'orbit view'}</em></div>
       <div className="fh-row">
         <button className="fh-btn fh-play" onClick={toggle}>
           {playing ? '❚❚' : '▶'}
@@ -396,6 +435,9 @@ export function FlightHUD({ simRef, progressRef }) {
           </button>
         ))}
       </div>
+      <button className={'fh-btn fh-follow' + (followEnabled ? ' active' : '')} onClick={toggleFollow}>
+        Follow drone
+      </button>
       <div className="fh-track"><div className="fh-fill" ref={progressRef} /></div>
     </div>
   );

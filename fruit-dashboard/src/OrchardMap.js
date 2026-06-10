@@ -9,6 +9,7 @@ import './OrchardMap.css';
 const API_BASE_URL = 'http://localhost:5000/api';
 const CM = 0.01;                 // cm -> scene metres (positions arrive in cm)
 const APPLE_BASE = 0.082;        // -> ~7.5 cm apple at confidence ~1
+const captureImageUrl = (image) => image ? `${API_BASE_URL}/captures/${encodeURIComponent(image)}` : null;
 
 /* ---------------------------------------------------------------------
    Ripeness tokens (ported from design/orchard/orchard-data.js).
@@ -102,6 +103,7 @@ APPLE_GEOM.computeVertexNormals();
 
 const STEM_GEOM = new THREE.CylinderGeometry(0.016, 0.024, 0.24, 5);
 STEM_GEOM.translate(0, 0.5 + 0.12, 0);   // base seated in the apple's stem cavity
+const FRUIT_LEAF_GEOM = new THREE.IcosahedronGeometry(0.055, 1);
 
 // Build one tree. Returns { group, foliageMats, crownTop }.
 function buildTree(rand, opts) {
@@ -369,11 +371,14 @@ const Fruit = memo(function Fruit({ det, offset, selectedTreeId, filterKey, onSe
     const rand = seeded(hashStr(det.id));
     const v = 0.93 + rand() * 0.12;     // gentle per-apple lightness variation
     const color = new THREE.Color(RIPENESS[key].color).multiplyScalar(v).getStyle();
+    const leafColor = new THREE.Color('#7d9b62').multiplyScalar(0.9 + rand() * 0.16).getStyle();
     return {
       color,
+      leafColor,
       baseScale: APPLE_BASE * (0.85 + det.confidence * 0.5),
       rotation: [(rand() - 0.5) * 0.6, rand() * 6.28, (rand() - 0.5) * 0.6],
-      stemTilt: (rand() - 0.5) * 0.5
+      stemTilt: (rand() - 0.5) * 0.5,
+      leafRotation: [rand() * 6.28, rand() * 6.28, rand() * 6.28]
     };
   }, [det.id, det.confidence, key]);
 
@@ -383,41 +388,57 @@ const Fruit = memo(function Fruit({ det, offset, selectedTreeId, filterKey, onSe
   const emph = filterKey && matchFilter;          // highlighted by the legend filter
   const scale = look.baseScale * (hovered ? 1.7 : emph ? 1.18 : 1);
   const emissiveIntensity = hovered ? 0.55 : emph ? 0.3 : 0.12;
+  const opacity = dim ? 0.12 : 1;
+  const fruitPosition = [
+    (det.position.x + (offset ? offset.dx : 0)) * CM,
+    det.position.y * CM,
+    (det.position.z + (offset ? offset.dz : 0)) * CM
+  ];
 
   return (
-    <mesh
-      geometry={APPLE_GEOM}
-      position={[
-        (det.position.x + (offset ? offset.dx : 0)) * CM,
-        det.position.y * CM,
-        (det.position.z + (offset ? offset.dz : 0)) * CM
-      ]}
-      rotation={look.rotation}
-      scale={scale}
-      castShadow
+    <group
+      position={fruitPosition}
       onPointerOver={(e) => { e.stopPropagation(); setHovered(true); document.body.style.cursor = 'pointer'; showTooltip(det, key, e.clientX, e.clientY); }}
       onPointerMove={(e) => { e.stopPropagation(); showTooltip(det, key, e.clientX, e.clientY); }}
       onPointerOut={() => { setHovered(false); document.body.style.cursor = 'auto'; hideTooltip(); }}
       onClick={(e) => { e.stopPropagation(); onSelect(det.treeId); }}
     >
-      <meshStandardMaterial
-        color={look.color} emissive={look.color} emissiveIntensity={emissiveIntensity}
-        roughness={0.4} metalness={0} transparent={!!dim} opacity={dim ? 0.12 : 1}
-      />
-      <mesh geometry={STEM_GEOM} rotation-z={look.stemTilt}>
-        <meshStandardMaterial color="#6b4f33" roughness={0.9} />
+      <group rotation={look.leafRotation}>
+        <mesh geometry={FRUIT_LEAF_GEOM} position={[-0.042, -0.018, -0.018]} scale={[1.35, 0.72, 0.95]} castShadow>
+          <meshStandardMaterial color={look.leafColor} roughness={0.9} metalness={0} flatShading transparent opacity={dim ? 0.08 : 0.68} depthWrite={false} side={THREE.DoubleSide} />
+        </mesh>
+        <mesh geometry={FRUIT_LEAF_GEOM} position={[0.038, 0.006, -0.024]} scale={[1.05, 0.64, 1.25]} castShadow>
+          <meshStandardMaterial color={look.leafColor} roughness={0.9} metalness={0} flatShading transparent opacity={dim ? 0.08 : 0.62} depthWrite={false} side={THREE.DoubleSide} />
+        </mesh>
+        <mesh geometry={FRUIT_LEAF_GEOM} position={[0.002, 0.035, 0.02]} scale={[0.9, 0.58, 1.18]} castShadow>
+          <meshStandardMaterial color={look.leafColor} roughness={0.9} metalness={0} flatShading transparent opacity={dim ? 0.08 : 0.54} depthWrite={false} side={THREE.DoubleSide} />
+        </mesh>
+      </group>
+
+      <mesh geometry={APPLE_GEOM} rotation={look.rotation} scale={scale} castShadow>
+        <meshStandardMaterial
+          color={look.color} emissive={look.color} emissiveIntensity={emissiveIntensity}
+          roughness={0.4} metalness={0} transparent={!!dim} opacity={opacity}
+        />
+        <mesh geometry={STEM_GEOM} rotation-z={look.stemTilt}>
+          <meshStandardMaterial color="#6b4f33" roughness={0.9} transparent={!!dim} opacity={opacity} />
+        </mesh>
       </mesh>
-    </mesh>
+    </group>
   );
 });
 
 /* Camera tween: lerp position + controls target together (cubic ease-out). */
-function CameraRig({ selectedTreeId, treeCenters, controlsRef }) {
+function CameraRig({ selectedTreeId, treeCenters, controlsRef, followEnabled }) {
   const { camera } = useThree();
   const tween = useRef(null);
   const prevSel = useRef(null);
 
   useEffect(() => {
+    if (followEnabled) {
+      tween.current = null;
+      return;
+    }
     const prev = prevSel.current;
     prevSel.current = selectedTreeId;
     // only tween home when an actual deselect happens (not on data refreshes)
@@ -439,7 +460,7 @@ function CameraRig({ selectedTreeId, treeCenters, controlsRef }) {
       toT: target, t: 0
     };
     if (ctrl) ctrl.enabled = false;
-  }, [selectedTreeId, treeCenters, camera, controlsRef]);
+  }, [selectedTreeId, treeCenters, camera, controlsRef, followEnabled]);
 
   useFrame((_, delta) => {
     const tw = tween.current;
@@ -451,7 +472,7 @@ function CameraRig({ selectedTreeId, treeCenters, controlsRef }) {
     if (ctrl) ctrl.target.lerpVectors(tw.fromT, tw.toT, k);
     if (tw.t >= 1) {
       tween.current = null;
-      if (ctrl) { ctrl.enabled = true; ctrl.update(); }
+      if (ctrl) { ctrl.enabled = !followEnabled; ctrl.update(); }
     }
   });
 
@@ -504,7 +525,8 @@ function Scene({
   setHoverTree, onSelect, showTooltip, hideTooltip,
   anchors, treeCenters, chipRefs, controlsRef,
   mergedLocated, standaloneLocated, builtLocated, fruitOffsets,
-  showLocatedTip, hideLocatedTip, flightTargets, simRef, progressRef
+  showLocatedTip, hideLocatedTip, flightTargets, simRef, progressRef,
+  followRef, followEnabled, onCaptureChange
 }) {
   return (
     <>
@@ -555,13 +577,26 @@ function Scene({
         />
       ))}
 
-      <DroneFlight targets={flightTargets} simRef={simRef} progressRef={progressRef} />
+      <DroneFlight
+        targets={flightTargets}
+        simRef={simRef}
+        progressRef={progressRef}
+        followRef={followRef}
+        controlsRef={controlsRef}
+        onCaptureChange={onCaptureChange}
+      />
 
-      <CameraRig selectedTreeId={selectedTreeId} treeCenters={treeCenters} controlsRef={controlsRef} />
+      <CameraRig
+        selectedTreeId={selectedTreeId}
+        treeCenters={treeCenters}
+        controlsRef={controlsRef}
+        followEnabled={followEnabled}
+      />
       <ChipProjector anchors={anchors} chipRefs={chipRefs} selectedTreeId={selectedTreeId} hoverTreeId={hoverTreeId} />
 
       <OrbitControls
         ref={controlsRef} makeDefault
+        enabled={!followEnabled}
         enableDamping dampingFactor={0.08}
         target={[0, 1.35, 7]}
         minDistance={1.6} maxDistance={26}
@@ -670,6 +705,29 @@ function LocatedPanel({ lt, onClose }) {
       </div>
       <div className="panel-coords">
         ~ {Math.round(lt.position.x)}, {Math.round(lt.position.z)} cm from mission pad
+      </div>
+    </aside>
+  );
+}
+
+function CaptureReview({ capture }) {
+  if (!capture) return null;
+  const imageUrl = captureImageUrl(capture.image);
+  return (
+    <aside className="capture-review">
+      <div className="cr-media">
+        {imageUrl ? (
+          <img src={imageUrl} alt={`Drone capture ${capture.image}`} />
+        ) : (
+          <div className="cr-empty">No source photo</div>
+        )}
+      </div>
+      <div className="cr-body">
+        <div className="cr-cap">Photo stop</div>
+        <div className="cr-title">{capture.label || capture.id}</div>
+        {capture.image && <div className="cr-row"><span>image</span><b>{capture.image}</b></div>}
+        {capture.count != null && <div className="cr-row"><span>detections</span><b>{capture.count}</b></div>}
+        <div className="cr-row"><span>view</span><b>drone camera</b></div>
       </div>
     </aside>
   );
@@ -791,6 +849,8 @@ function OrchardMap({ sessionId }) {
   const [selectedTreeId, setSelectedTreeId] = useState(null);
   const [filterKey, setFilterKey] = useState(null);
   const [hoverTreeId, setHoverTreeId] = useState(null);
+  const [activeCapture, setActiveCapture] = useState(null);
+  const [followEnabled, setFollowEnabled] = useState(true);
 
   const containerRef = useRef(null);
   const tooltipRef = useRef(null);
@@ -800,6 +860,7 @@ function OrchardMap({ sessionId }) {
   // flight-sim shared state (mutated by the HUD, read in useFrame)
   const simRef = useRef({ playing: true, speed: 1 });
   const progressRef = useRef(null);
+  const followRef = useRef({ enabled: true });
 
   // ---- derived data (memoized) ----
   const byTree = useMemo(() => groupByTree(detections), [detections]);
@@ -913,10 +974,25 @@ function OrchardMap({ sessionId }) {
   const flightTargets = useMemo(() => {
     const pts = trees.map((t) => {
       const lt = locatedMerge.merged[t.treeId];
-      return { x: (lt ? lt.position.x : t.cx) * CM, z: (lt ? lt.position.z : t.cz) * CM };
+      const image = t.detections.find((d) => d.image)?.image || lt?.image || null;
+      return {
+        id: t.treeId,
+        label: t.treeId,
+        image,
+        count: t.total,
+        x: (lt ? lt.position.x : t.cx) * CM,
+        z: (lt ? lt.position.z : t.cz) * CM
+      };
     });
     locatedMerge.standalone.forEach((lt) => {
-      pts.push({ x: lt.position.x * CM, z: lt.position.z * CM });
+      pts.push({
+        id: 'loc:' + lt.id,
+        label: lt.label,
+        image: lt.image || null,
+        count: 0,
+        x: lt.position.x * CM,
+        z: lt.position.z * CM
+      });
     });
     return pts;
   }, [trees, locatedMerge]);
@@ -1021,6 +1097,9 @@ function OrchardMap({ sessionId }) {
               flightTargets={flightTargets}
               simRef={simRef}
               progressRef={progressRef}
+              followRef={followRef}
+              followEnabled={followEnabled}
+              onCaptureChange={setActiveCapture}
             />
           </Canvas>
 
@@ -1071,7 +1150,14 @@ function OrchardMap({ sessionId }) {
               treeCount={trees.length + locatedMerge.standalone.length}
             />
             <Legend filterKey={filterKey} setFilter={setFilter} totals={totals} />
-            <FlightHUD simRef={simRef} progressRef={progressRef} />
+            <FlightHUD
+              simRef={simRef}
+              progressRef={progressRef}
+              followRef={followRef}
+              followEnabled={followEnabled}
+              setFollowEnabled={setFollowEnabled}
+            />
+            <CaptureReview capture={activeCapture} />
             {selectedLocated
               ? <LocatedPanel lt={selectedLocated} onClose={onDeselect} />
               : <DetailPanel tree={selectedTree} located={selectedTreeId ? locatedMerge.merged[selectedTreeId] : null} onClose={onDeselect} />}

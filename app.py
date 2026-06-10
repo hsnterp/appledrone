@@ -1,24 +1,159 @@
-from flask import Flask, jsonify
+from flask import Flask, abort, jsonify, send_from_directory
 from flask_cors import CORS
 import sys
 import os
 import math
+import struct
 
-# Add parent directory to path to import database module
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from database.db_setup import FruitDatabase
 
 app = Flask(__name__)
-# Enable CORS for React frontend (allows requests from localhost:3000)
 CORS(app, resources={r"/api/*": {"origins": ["http://localhost:3000", "http://127.0.0.1:3000"]}})
 
-# Initialize database
+# ── Mock-data toggle ──────────────────────────────────────────────────────────
+# Set to True to use hardcoded orchard data (trees, rocks, fruit) for UI dev.
+# Set to False (or USE_MOCK_DATA=false env var) to use the real database.
+USE_MOCK_DATA = os.environ.get("USE_MOCK_DATA", "false").lower() not in ("false", "0", "no")
+
+if USE_MOCK_DATA:
+    import sys as _sys
+    _sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"))
+    from mock_data import MOCK_SESSIONS, MOCK_DETECTIONS, MOCK_TREES, MOCK_SESSION_ID
+    print("⚠️  Mock data mode ON — real database is not used")
+
 db = FruitDatabase()
+
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_IMAGE_SIZE = (960, 720)
+DEFAULT_FOCAL_PX = 1850
+CANOPY_MIN_CM = 145.0
+CANOPY_MAX_CM = 235.0
+_IMAGE_SIZE_CACHE = {}
+
+
+def _read_image_size(path):
+    """Read PNG/JPEG dimensions without requiring Pillow at runtime."""
+    with open(path, "rb") as f:
+        header = f.read(24)
+        if header.startswith(b"\x89PNG\r\n\x1a\n") and len(header) >= 24:
+            return struct.unpack(">II", header[16:24])
+
+        if not header.startswith(b"\xff\xd8"):
+            return None
+
+        f.seek(2)
+        while True:
+            marker_start = f.read(1)
+            if not marker_start:
+                return None
+            if marker_start != b"\xff":
+                continue
+
+            marker = f.read(1)
+            while marker == b"\xff":
+                marker = f.read(1)
+            if not marker:
+                return None
+
+            marker_code = marker[0]
+            if marker_code in (0xD8, 0xD9):
+                continue
+
+            length_bytes = f.read(2)
+            if len(length_bytes) != 2:
+                return None
+            segment_length = struct.unpack(">H", length_bytes)[0]
+
+            if marker_code in (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF):
+                segment = f.read(5)
+                if len(segment) != 5:
+                    return None
+                height, width = struct.unpack(">HH", segment[1:5])
+                return width, height
+
+            f.seek(segment_length - 2, os.SEEK_CUR)
+
+
+def get_image_size(image_file):
+    if not image_file:
+        return DEFAULT_IMAGE_SIZE
+    if image_file in _IMAGE_SIZE_CACHE:
+        return _IMAGE_SIZE_CACHE[image_file]
+
+    candidates = []
+    if os.path.isabs(image_file):
+        candidates.append(image_file)
+    else:
+        candidates.extend([
+            os.path.join(PROJECT_ROOT, "data", "captures", image_file),
+            os.path.join(PROJECT_ROOT, "data", "test", image_file),
+            os.path.join(PROJECT_ROOT, "data", image_file),
+            os.path.join(PROJECT_ROOT, image_file),
+        ])
+
+    size = None
+    for path in candidates:
+        if os.path.exists(path):
+            try:
+                size = _read_image_size(path)
+            except OSError:
+                size = None
+            if size:
+                break
+
+    _IMAGE_SIZE_CACHE[image_file] = size or DEFAULT_IMAGE_SIZE
+    return _IMAGE_SIZE_CACHE[image_file]
+
+
+def _fallback_canopy_y(index):
+    steps = 6
+    return CANOPY_MIN_CM + (index % (steps + 1)) * ((CANOPY_MAX_CM - CANOPY_MIN_CM) / steps)
+
+
+def fruit_y_from_bbox(bbox_y, image_h, index):
+    if bbox_y is None or not image_h:
+        return _fallback_canopy_y(index)
+
+    norm_y = max(0.0, min(1.0, float(bbox_y) / float(image_h)))
+    return CANOPY_MAX_CM - norm_y * (CANOPY_MAX_CM - CANOPY_MIN_CM)
+
+
+def project_horizontal_position(image_file, bbox_x, distance_cm):
+    image_w, _ = get_image_size(image_file)
+    center_x = image_w / 2.0
+    focal_px = DEFAULT_FOCAL_PX * (image_w / DEFAULT_IMAGE_SIZE[0])
+    return ((bbox_x - center_x) / focal_px) * distance_cm
 
 @app.route('/api/session/<session_id>/stats', methods=['GET'])
 def get_session_stats(session_id):
     """Get overall session statistics"""
     try:
+        if USE_MOCK_DATA:
+            dets = MOCK_DETECTIONS
+            fruit_counts = {}
+            ripeness_dist = {'Ripe': 0, 'Unripe': 0, 'Overripe': 0}
+            uncertain_count = 0
+            for d in dets:
+                fruit_counts[d['fruitType']] = fruit_counts.get(d['fruitType'], 0) + 1
+                if d['isUncertain']:
+                    uncertain_count += 1
+                else:
+                    k = d['ripeness'].capitalize()
+                    if k in ripeness_dist:
+                        ripeness_dist[k] += 1
+            return jsonify({
+                'sessionId': session_id,
+                'fruitCounts': [{'name': k.capitalize(), 'value': v} for k, v in fruit_counts.items()],
+                'ripenessDistribution': [{'name': k, 'value': v} for k, v in ripeness_dist.items()],
+                'uncertainDetections': [],
+                'sessionStats': {
+                    'totalScanned': len(dets),
+                    'totalDetected': len(dets),
+                    'uncertainCount': uncertain_count,
+                },
+            })
+
         stats = db.get_session_stats_with_uncertainty(session_id)
         
         # Process stats into structured format
@@ -107,6 +242,8 @@ def get_fruit_ripeness(fruit_type):
 def get_sessions():
     """Get all sessions"""
     try:
+        if USE_MOCK_DATA:
+            return jsonify(MOCK_SESSIONS)
         sessions = db.get_all_sessions()
         sessions_list = [
             {
@@ -122,10 +259,9 @@ def get_sessions():
 
 @app.route('/api/session/<session_id>/detections', methods=['GET'])
 def get_session_detections(session_id):
-    # Tello stream resolution & focal length (from CLAUDE.md formula)
-    IMG_W, IMG_H = 960, 720
-    FOCAL_PX = 1850
-    CX, CY = IMG_W / 2.0, IMG_H / 2.0
+    if USE_MOCK_DATA:
+        return jsonify({'detections': MOCK_DETECTIONS})
+
     GOLDEN_ANGLE = math.pi * 2 * (1 - 2 / (1 + math.sqrt(5)))
 
     try:
@@ -138,22 +274,21 @@ def get_session_detections(session_id):
             tree_id = img.rsplit('.', 1)[0] if img else f'tree-{i // 4}'
 
             # 3D position relative to mission pad (cm).
-            # If we have bbox + distance, project via pinhole model.
+            # If we have bbox + distance, project x via pinhole math.
+            # The scene's y axis is ground-relative height, so bbox_y is
+            # mapped into the procedural tree foliage band.
             # Otherwise fall back to a stable golden-angle spiral so the map
             # always renders something non-overlapping.
             if bx is not None and bw is not None and dist:
-                # bbox_x/bbox_y are box centers (both Roboflow and
-                # LocateAnything store center coordinates).
-                cx_px = bx
-                cy_px = by if by is not None else CY
-                x_cm = (cx_px - CX) / FOCAL_PX * dist
-                y_cm = -((cy_px - CY) / FOCAL_PX * dist)
+                _, image_h = get_image_size(img)
+                x_cm = project_horizontal_position(img, bx, dist)
+                y_cm = fruit_y_from_bbox(by, image_h, i)
                 z_cm = float(dist)
             else:
                 angle = i * GOLDEN_ANGLE
                 radius = 80 + (i % 6) * 30
                 x_cm = radius * math.cos(angle)
-                y_cm = 0.0
+                y_cm = _fallback_canopy_y(i)
                 z_cm = radius * math.sin(angle) + 250
 
             result.append({
@@ -176,9 +311,9 @@ def get_session_detections(session_id):
 def get_session_trees(session_id):
     """Plant/tree landmarks located during a session, positioned relative
     to the Mission Pad with the same pinhole math as fruit detections."""
-    IMG_W, IMG_H = 960, 720
-    FOCAL_PX = 1850
-    CX, CY = IMG_W / 2.0, IMG_H / 2.0
+    if USE_MOCK_DATA:
+        return jsonify({'trees': MOCK_TREES})
+
     GOLDEN_ANGLE = math.pi * 2 * (1 - 2 / (1 + math.sqrt(5)))
 
     try:
@@ -186,11 +321,9 @@ def get_session_trees(session_id):
         trees = []
         for i, (tree_id, img, label, conf, bx, by, bw, bh, dist) in enumerate(rows):
             if bx is not None and bw is not None and dist:
-                # bbox_x/bbox_y are box centers, same as the detections above.
-                cx_px = bx
-                cy_px = by if by is not None else CY
-                x_cm = (cx_px - CX) / FOCAL_PX * dist
-                y_cm = -((cy_px - CY) / FOCAL_PX * dist)
+                # bbox_x is a box center, same as the detections above.
+                x_cm = project_horizontal_position(img, bx, dist)
+                y_cm = 0.0
                 z_cm = float(dist)
             else:
                 # Deterministic golden-angle spread (wider ring than fruits)
@@ -217,6 +350,21 @@ def get_session_trees(session_id):
         return jsonify({'trees': trees})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/captures/<path:image_file>', methods=['GET'])
+def get_capture_image(image_file):
+    """Serve source drone photos referenced by detections/located trees."""
+    safe_name = os.path.basename(image_file)
+    if not safe_name or safe_name != image_file:
+        abort(404)
+
+    for folder in ("captures", "test"):
+        directory = os.path.join(PROJECT_ROOT, "data", folder)
+        candidate = os.path.join(directory, safe_name)
+        if os.path.isfile(candidate):
+            return send_from_directory(directory, safe_name)
+
+    abort(404)
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
