@@ -3,6 +3,7 @@ import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { MissionPad, DroneFlight, FlightHUD } from './DroneFlight';
 import './OrchardMap.css';
 
 const API_BASE_URL = 'http://localhost:5000/api';
@@ -203,6 +204,70 @@ function buildTree(rand, opts) {
   return { group, foliageMats: [leafMat], crownTop };
 }
 
+/* Smaller, rounder variant for located "bush" labels — same foliage
+   technique (translucent icosahedron blobs) over a few short stems. */
+function buildBush(rand, opts) {
+  opts = opts || {};
+  const barkColor = opts.barkColor || '#7c5a3c';
+  const leafColor = new THREE.Color(opts.leafColor || '#7d9b62');
+
+  const group = new THREE.Group();
+  const branchGeoms = [];
+  const foliageGeoms = [];
+  let crownTop = 0;
+
+  const up = new THREE.Vector3(0, 1, 0);
+  const _q = new THREE.Quaternion();
+  const _m = new THREE.Matrix4();
+  const _s = new THREE.Vector3(1, 1, 1);
+
+  const stems = 3 + Math.floor(rand() * 2);
+  for (let i = 0; i < stems; i++) {
+    const azim = (i / stems) * Math.PI * 2 + rand() * 0.8;
+    const dir = new THREE.Vector3(Math.sin(azim) * 0.5, 1, Math.cos(azim) * 0.5).normalize();
+    const len = 0.32 + rand() * 0.2;
+    const geom = new THREE.CylinderGeometry(0.011, 0.022, len, 5);
+    _q.setFromUnitVectors(up, dir);
+    _m.compose(dir.clone().multiplyScalar(len / 2), _q, _s);
+    geom.applyMatrix4(_m);
+    branchGeoms.push(geom);
+  }
+
+  const blobs = 6 + Math.floor(rand() * 3);
+  for (let i = 0; i < blobs; i++) {
+    const a = rand() * Math.PI * 2;
+    const r = rand() * 0.3;
+    const cx = Math.cos(a) * r, cz = Math.sin(a) * r;
+    const cy = 0.32 + rand() * 0.28;
+    const radius = 0.18 + rand() * 0.14;
+    const g = new THREE.IcosahedronGeometry(radius, 1);
+    g.scale(1, 0.78 + rand() * 0.2, 1);
+    g.translate(cx, cy, cz);
+    foliageGeoms.push(g);
+    crownTop = Math.max(crownTop, cy + radius);
+  }
+
+  const barkMat = new THREE.MeshStandardMaterial({ color: barkColor, roughness: 0.95, metalness: 0 });
+  const branchMesh = new THREE.Mesh(mergeGeometries(branchGeoms, false), barkMat);
+  branchMesh.castShadow = true; branchMesh.receiveShadow = true;
+  branchMesh.userData = { kind: 'tree' };
+  group.add(branchMesh);
+
+  const leafMat = new THREE.MeshStandardMaterial({
+    color: leafColor, roughness: 0.85, metalness: 0, flatShading: true,
+    transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide
+  });
+  const foliageMesh = new THREE.Mesh(mergeGeometries(foliageGeoms, false), leafMat);
+  foliageMesh.castShadow = true;
+  foliageMesh.userData = { kind: 'tree' };
+  group.add(foliageMesh);
+
+  branchGeoms.forEach((g) => g.dispose());
+  foliageGeoms.forEach((g) => g.dispose());
+
+  return { group, foliageMats: [leafMat], crownTop };
+}
+
 /* =====================================================================
    3D scene pieces (R3F)
    ===================================================================== */
@@ -241,20 +306,23 @@ function GroundAndGrid() {
       </mesh>
       <primitive object={grids.fine} />
       <primitive object={grids.bold} />
-      {/* mission-pad marker at the drone origin (0,0) */}
-      <mesh rotation-x={-Math.PI / 2} position={[0, 0.01, 0]}>
-        <ringGeometry args={[0.16, 0.26, 24]} />
-        <meshBasicMaterial color="#2E2A22" transparent opacity={0.6} side={THREE.DoubleSide} />
-      </mesh>
-      <mesh rotation-x={-Math.PI / 2} position={[0, 0.011, 0]}>
-        <circleGeometry args={[0.08, 20]} />
-        <meshBasicMaterial color="#2E2A22" />
-      </mesh>
+      {/* mission pad at the drone origin (0,0) — see DroneFlight.js */}
+      <MissionPad />
     </>
   );
 }
 
-function TreeMesh({ built, position, treeId, active, onSelect, onHover }) {
+/* base ring marking trees confirmed by the locator endpoint */
+function LocatedRing() {
+  return (
+    <mesh rotation-x={-Math.PI / 2} position={[0, 0.012, 0]}>
+      <ringGeometry args={[0.3, 0.36, 28]} />
+      <meshBasicMaterial color="#C2702E" transparent opacity={0.5} side={THREE.DoubleSide} />
+    </mesh>
+  );
+}
+
+function TreeMesh({ built, position, treeId, active, located, onSelect, onHover }) {
   useEffect(() => {
     built.foliageMats.forEach((m) => { m.opacity = active ? 0.46 : 0.3; });
   }, [active, built]);
@@ -267,11 +335,33 @@ function TreeMesh({ built, position, treeId, active, onSelect, onHover }) {
       onClick={(e) => { e.stopPropagation(); onSelect(treeId); }}
     >
       <primitive object={built.group} />
+      {located && <LocatedRing />}
     </group>
   );
 }
 
-const Fruit = memo(function Fruit({ det, selectedTreeId, filterKey, onSelect, showTooltip, hideTooltip }) {
+/* standalone located tree/bush (from /trees, no detection cluster nearby) */
+function LocatedTreeMesh({ lt, built, active, onSelect, onHover, showTip, hideTip }) {
+  useEffect(() => {
+    built.foliageMats.forEach((m) => { m.opacity = active ? 0.46 : 0.3; });
+  }, [active, built]);
+
+  const key = 'loc:' + lt.id;
+  return (
+    <group
+      position={[lt.position.x * CM, 0, lt.position.z * CM]}
+      onPointerOver={(e) => { e.stopPropagation(); onHover(key); document.body.style.cursor = 'pointer'; showTip(lt, e.clientX, e.clientY); }}
+      onPointerMove={(e) => { e.stopPropagation(); showTip(lt, e.clientX, e.clientY); }}
+      onPointerOut={(e) => { e.stopPropagation(); onHover(null); document.body.style.cursor = 'auto'; hideTip(); }}
+      onClick={(e) => { e.stopPropagation(); onSelect(key); }}
+    >
+      <primitive object={built.group} />
+      <LocatedRing />
+    </group>
+  );
+}
+
+const Fruit = memo(function Fruit({ det, offset, selectedTreeId, filterKey, onSelect, showTooltip, hideTooltip }) {
   const key = ripeKey(det);
   const [hovered, setHovered] = useState(false);
 
@@ -297,7 +387,11 @@ const Fruit = memo(function Fruit({ det, selectedTreeId, filterKey, onSelect, sh
   return (
     <mesh
       geometry={APPLE_GEOM}
-      position={[det.position.x * CM, det.position.y * CM, det.position.z * CM]}
+      position={[
+        (det.position.x + (offset ? offset.dx : 0)) * CM,
+        det.position.y * CM,
+        (det.position.z + (offset ? offset.dz : 0)) * CM
+      ]}
       rotation={look.rotation}
       scale={scale}
       castShadow
@@ -321,10 +415,13 @@ const Fruit = memo(function Fruit({ det, selectedTreeId, filterKey, onSelect, sh
 function CameraRig({ selectedTreeId, treeCenters, controlsRef }) {
   const { camera } = useThree();
   const tween = useRef(null);
-  const didMount = useRef(false);
+  const prevSel = useRef(null);
 
   useEffect(() => {
-    if (!didMount.current) { didMount.current = true; if (!selectedTreeId) return; }
+    const prev = prevSel.current;
+    prevSel.current = selectedTreeId;
+    // only tween home when an actual deselect happens (not on data refreshes)
+    if (!selectedTreeId && !prev) return;
     let camPos, target;
     const c = treeCenters[selectedTreeId];
     if (selectedTreeId && c) {
@@ -405,7 +502,9 @@ function ChipProjector({ anchors, chipRefs, selectedTreeId, hoverTreeId }) {
 function Scene({
   trees, builtTrees, detections, selectedTreeId, filterKey, hoverTreeId,
   setHoverTree, onSelect, showTooltip, hideTooltip,
-  anchors, treeCenters, chipRefs, controlsRef
+  anchors, treeCenters, chipRefs, controlsRef,
+  mergedLocated, standaloneLocated, builtLocated, fruitOffsets,
+  showLocatedTip, hideLocatedTip, flightTargets, simRef, progressRef
 }) {
   return (
     <>
@@ -414,15 +513,32 @@ function Scene({
       <Lights />
       <GroundAndGrid />
 
-      {trees.map((t) => (
-        <TreeMesh
-          key={t.treeId}
-          built={builtTrees[t.treeId]}
-          position={[t.cx * CM, 0, t.cz * CM]}
-          treeId={t.treeId}
-          active={t.treeId === selectedTreeId || t.treeId === hoverTreeId}
+      {trees.map((t) => {
+        const lt = mergedLocated[t.treeId];
+        return (
+          <TreeMesh
+            key={t.treeId}
+            built={builtTrees[t.treeId]}
+            position={[(lt ? lt.position.x : t.cx) * CM, 0, (lt ? lt.position.z : t.cz) * CM]}
+            treeId={t.treeId}
+            active={t.treeId === selectedTreeId || t.treeId === hoverTreeId}
+            located={!!lt}
+            onSelect={onSelect}
+            onHover={setHoverTree}
+          />
+        );
+      })}
+
+      {standaloneLocated.map((lt) => (
+        <LocatedTreeMesh
+          key={'loc:' + lt.id}
+          lt={lt}
+          built={builtLocated[lt.id]}
+          active={'loc:' + lt.id === selectedTreeId || 'loc:' + lt.id === hoverTreeId}
           onSelect={onSelect}
           onHover={setHoverTree}
+          showTip={showLocatedTip}
+          hideTip={hideLocatedTip}
         />
       ))}
 
@@ -430,6 +546,7 @@ function Scene({
         <Fruit
           key={d.id}
           det={d}
+          offset={fruitOffsets[d.treeId]}
           selectedTreeId={selectedTreeId}
           filterKey={filterKey}
           onSelect={onSelect}
@@ -437,6 +554,8 @@ function Scene({
           hideTooltip={hideTooltip}
         />
       ))}
+
+      <DroneFlight targets={flightTargets} simRef={simRef} progressRef={progressRef} />
 
       <CameraRig selectedTreeId={selectedTreeId} treeCenters={treeCenters} controlsRef={controlsRef} />
       <ChipProjector anchors={anchors} chipRefs={chipRefs} selectedTreeId={selectedTreeId} hoverTreeId={hoverTreeId} />
@@ -518,7 +637,45 @@ function RuleBar({ k, value, max }) {
   );
 }
 
-function DetailPanel({ tree, onClose }) {
+function LocatedRows({ lt }) {
+  return (
+    <ul className="lp-rows">
+      <li className="lp-row"><span>label</span><b>{lt.label}</b></li>
+      <li className="lp-row"><span>confidence</span><b>{Math.round(lt.confidence * 100)}%</b></li>
+      {Number.isFinite(lt.distanceCm) && (
+        <li className="lp-row"><span>distance</span><b>{Math.round(lt.distanceCm)} cm</b></li>
+      )}
+      {lt.image && <li className="lp-row"><span>source</span><b>{lt.image}</b></li>}
+    </ul>
+  );
+}
+
+/* journal page for a standalone located tree/bush (no fruit cluster yet) */
+function LocatedPanel({ lt, onClose }) {
+  if (!lt) return null;
+  return (
+    <aside className="panel">
+      <button className="panel-close" onClick={onClose}>← back to orchard</button>
+      <div className="panel-head">
+        <div className="ph-id">{lt.label}</div>
+        <div className="ph-meta">located by drone survey</div>
+      </div>
+      <div className="panel-sec">
+        <div className="sec-cap">Locator reading</div>
+        <LocatedRows lt={lt} />
+      </div>
+      <div className="panel-sec">
+        <div className="sec-cap">Field notes</div>
+        <p className="note-clean">No fruit detections matched to this specimen yet.</p>
+      </div>
+      <div className="panel-coords">
+        ~ {Math.round(lt.position.x)}, {Math.round(lt.position.z)} cm from mission pad
+      </div>
+    </aside>
+  );
+}
+
+function DetailPanel({ tree, located, onClose }) {
   if (!tree) return null;
   const max = Math.max(tree.breakdown.ripe, tree.breakdown.unripe, tree.breakdown.overripe, 1);
   const dom = RIPENESS[tree.dominant];
@@ -558,8 +715,14 @@ function DetailPanel({ tree, onClose }) {
           </ul>
         )}
       </div>
+      {located && (
+        <div className="panel-sec">
+          <div className="sec-cap">Matched located tree</div>
+          <LocatedRows lt={located} />
+        </div>
+      )}
       <div className="panel-coords">
-        ~ {Math.round(tree.cx)}, {Math.round(tree.cz)} cm from mission pad
+        ~ {Math.round(located ? located.position.x : tree.cx)}, {Math.round(located ? located.position.z : tree.cz)} cm from mission pad
       </div>
     </aside>
   );
@@ -592,11 +755,38 @@ function useDetections(sessionId) {
   return state;
 }
 
+/* GET /api/session/:id/trees — located trees from the tree-locator pass.
+   The endpoint may 404 or not exist yet; any failure degrades to []
+   so the map keeps working exactly as before. */
+function useLocatedTrees(sessionId) {
+  const [located, setLocated] = useState([]);
+
+  useEffect(() => {
+    if (!sessionId) { setLocated([]); return; }
+    let cancelled = false;
+    fetch(`${API_BASE_URL}/session/${sessionId}/trees`)
+      .then((res) => { if (!res.ok) throw new Error('trees endpoint unavailable'); return res.json(); })
+      .then((data) => {
+        if (cancelled) return;
+        const list = Array.isArray(data && data.trees) ? data.trees : [];
+        setLocated(list.filter((t) =>
+          t && t.id != null && t.position &&
+          Number.isFinite(t.position.x) && Number.isFinite(t.position.z)
+        ));
+      })
+      .catch(() => { if (!cancelled) setLocated([]); });
+    return () => { cancelled = true; };
+  }, [sessionId]);
+
+  return located;
+}
+
 /* =====================================================================
    Root component
    ===================================================================== */
 function OrchardMap({ sessionId }) {
   const { detections, loading, error, capturedAt } = useDetections(sessionId);
+  const locatedTrees = useLocatedTrees(sessionId);
 
   const [selectedTreeId, setSelectedTreeId] = useState(null);
   const [filterKey, setFilterKey] = useState(null);
@@ -607,10 +797,45 @@ function OrchardMap({ sessionId }) {
   const chipRefs = useRef({});
   const controlsRef = useRef(null);
 
+  // flight-sim shared state (mutated by the HUD, read in useFrame)
+  const simRef = useRef({ playing: true, speed: 1 });
+  const progressRef = useRef(null);
+
   // ---- derived data (memoized) ----
   const byTree = useMemo(() => groupByTree(detections), [detections]);
   const trees = useMemo(() => Object.values(byTree), [byTree]);
   const totals = useMemo(() => computeTotals(detections), [detections]);
+
+  // merge located trees with inferred clusters: a located tree within
+  // ~80 cm (x/z) of a detection-derived center adopts that cluster.
+  const locatedMerge = useMemo(() => {
+    const merged = {};                 // inferred treeId -> located tree
+    const standalone = [];
+    const claimed = new Set();
+    locatedTrees.forEach((lt) => {
+      let best = null, bestD = Infinity;
+      trees.forEach((t) => {
+        if (claimed.has(t.treeId)) return;
+        const d = Math.hypot(t.cx - lt.position.x, t.cz - lt.position.z);
+        if (d < bestD) { bestD = d; best = t; }
+      });
+      if (best && bestD <= 80) { merged[best.treeId] = lt; claimed.add(best.treeId); }
+      else standalone.push(lt);
+    });
+    return { merged, standalone };
+  }, [locatedTrees, trees]);
+
+  // when merged, fruits shift by the located-vs-inferred center delta (cm)
+  // so they sit on/around the located tree.
+  const fruitOffsets = useMemo(() => {
+    const m = {};
+    Object.keys(locatedMerge.merged).forEach((tid) => {
+      const lt = locatedMerge.merged[tid];
+      const g = byTree[tid];
+      if (g) m[tid] = { dx: lt.position.x - g.cx, dz: lt.position.z - g.cz };
+    });
+    return m;
+  }, [locatedMerge, byTree]);
 
   // procedural tree geometry — built once per tree set, seeded by treeId
   const builtTrees = useMemo(() => {
@@ -623,42 +848,84 @@ function OrchardMap({ sessionId }) {
     return m;
   }, [trees]);
 
+  // standalone located trees get their own procedural builds, seeded by id
+  const builtLocated = useMemo(() => {
+    const m = {};
+    locatedMerge.standalone.forEach((lt) => {
+      const rand = seeded(hashStr(String(lt.id)));
+      m[lt.id] = lt.label === 'bush'
+        ? buildBush(rand, { barkColor: '#7c5a3c', leafColor: '#7d9b62' })
+        : buildTree(rand, { barkColor: '#7c5a3c', leafColor: '#7d9b62' });
+      m[lt.id].group.rotation.y = (hashStr(String(lt.id)) % 628) / 100;
+    });
+    return m;
+  }, [locatedMerge.standalone]);
+
   // dispose old geometry/materials when the tree set changes or on unmount
   useEffect(() => {
     return () => {
-      Object.values(builtTrees).forEach((b) => {
+      [...Object.values(builtTrees), ...Object.values(builtLocated)].forEach((b) => {
         b.group.traverse((o) => {
           if (o.geometry) o.geometry.dispose();
           if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((mm) => mm.dispose());
         });
       });
     };
-  }, [builtTrees]);
+  }, [builtTrees, builtLocated]);
 
   // label anchors (crown top) + tree centers in scene metres
-  const anchors = useMemo(() => trees.map((t) => ({
-    treeId: t.treeId,
-    anchor: new THREE.Vector3(t.cx * CM, (builtTrees[t.treeId]?.crownTop || 2) + 0.28, t.cz * CM)
-  })), [trees, builtTrees]);
+  const anchors = useMemo(() => {
+    const a = trees.map((t) => {
+      const lt = locatedMerge.merged[t.treeId];
+      const x = (lt ? lt.position.x : t.cx) * CM;
+      const z = (lt ? lt.position.z : t.cz) * CM;
+      return {
+        treeId: t.treeId,
+        anchor: new THREE.Vector3(x, (builtTrees[t.treeId]?.crownTop || 2) + 0.28, z)
+      };
+    });
+    locatedMerge.standalone.forEach((lt) => {
+      a.push({
+        treeId: 'loc:' + lt.id,
+        anchor: new THREE.Vector3(
+          lt.position.x * CM,
+          (builtLocated[lt.id]?.crownTop || 1) + 0.28,
+          lt.position.z * CM
+        )
+      });
+    });
+    return a;
+  }, [trees, builtTrees, locatedMerge, builtLocated]);
 
   const treeCenters = useMemo(() => {
     const m = {};
-    trees.forEach((t) => { m[t.treeId] = { cx: t.cx * CM, cz: t.cz * CM }; });
+    trees.forEach((t) => {
+      const lt = locatedMerge.merged[t.treeId];
+      m[t.treeId] = { cx: (lt ? lt.position.x : t.cx) * CM, cz: (lt ? lt.position.z : t.cz) * CM };
+    });
+    locatedMerge.standalone.forEach((lt) => {
+      m['loc:' + lt.id] = { cx: lt.position.x * CM, cz: lt.position.z * CM };
+    });
     return m;
-  }, [trees]);
+  }, [trees, locatedMerge]);
+
+  // drone scan-flight targets: every rendered tree center (scene metres)
+  const flightTargets = useMemo(() => {
+    const pts = trees.map((t) => {
+      const lt = locatedMerge.merged[t.treeId];
+      return { x: (lt ? lt.position.x : t.cx) * CM, z: (lt ? lt.position.z : t.cz) * CM };
+    });
+    locatedMerge.standalone.forEach((lt) => {
+      pts.push({ x: lt.position.x * CM, z: lt.position.z * CM });
+    });
+    return pts;
+  }, [trees, locatedMerge]);
 
   // ---- imperative tooltip (avoids re-rendering the scene on pointer move) ----
-  const showTooltip = useCallback((det, key, clientX, clientY) => {
+  const placeTooltip = useCallback((clientX, clientY) => {
     const el = tooltipRef.current, cont = containerRef.current;
     if (!el || !cont) return;
     const r = cont.getBoundingClientRect();
-    const rk = RIPENESS[key];
-    el.innerHTML =
-      `<div class="tt-head"><span class="tt-dot" style="background:${rk.color}"></span>` +
-      `${det.fruitType} · <em>${rk.label}</em></div>` +
-      `<div class="tt-row">confidence <b>${Math.round(det.confidence * 100)}%</b></div>` +
-      `<div class="tt-row">tree <b>${det.treeId}</b></div>` +
-      (det.isUncertain ? `<div class="tt-flag">flagged uncertain — needs review</div>` : ``);
     el.style.display = 'block';
     const pad = 16;
     let x = clientX - r.left + pad, y = clientY - r.top + pad;
@@ -668,6 +935,32 @@ function OrchardMap({ sessionId }) {
     el.style.left = Math.max(0, x) + 'px';
     el.style.top = Math.max(0, y) + 'px';
   }, []);
+
+  const showTooltip = useCallback((det, key, clientX, clientY) => {
+    const el = tooltipRef.current;
+    if (!el) return;
+    const rk = RIPENESS[key];
+    el.innerHTML =
+      `<div class="tt-head"><span class="tt-dot" style="background:${rk.color}"></span>` +
+      `${det.fruitType} · <em>${rk.label}</em></div>` +
+      `<div class="tt-row">confidence <b>${Math.round(det.confidence * 100)}%</b></div>` +
+      `<div class="tt-row">tree <b>${det.treeId}</b></div>` +
+      (det.isUncertain ? `<div class="tt-flag">flagged uncertain — needs review</div>` : ``);
+    placeTooltip(clientX, clientY);
+  }, [placeTooltip]);
+
+  const showLocatedTip = useCallback((lt, clientX, clientY) => {
+    const el = tooltipRef.current;
+    if (!el) return;
+    el.innerHTML =
+      `<div class="tt-head"><span class="tt-dot" style="background:#C2702E"></span>` +
+      `${lt.label} · <em>located</em></div>` +
+      `<div class="tt-row">confidence <b>${Math.round(lt.confidence * 100)}%</b></div>` +
+      (Number.isFinite(lt.distanceCm)
+        ? `<div class="tt-row">distance <b>${Math.round(lt.distanceCm)} cm</b></div>` : '') +
+      (lt.image ? `<div class="tt-row">source <b>${lt.image}</b></div>` : '');
+    placeTooltip(clientX, clientY);
+  }, [placeTooltip]);
 
   const hideTooltip = useCallback(() => {
     const el = tooltipRef.current;
@@ -681,6 +974,9 @@ function OrchardMap({ sessionId }) {
   const setFilter = useCallback((k) => setFilterKey(k), []);
 
   const selectedTree = selectedTreeId ? byTree[selectedTreeId] : null;
+  const selectedLocated = (selectedTreeId && selectedTreeId.indexOf('loc:') === 0)
+    ? locatedMerge.standalone.find((lt) => 'loc:' + lt.id === selectedTreeId) || null
+    : null;
   const isEmpty = !loading && !error && detections.length === 0;
 
   return (
@@ -716,6 +1012,15 @@ function OrchardMap({ sessionId }) {
               treeCenters={treeCenters}
               chipRefs={chipRefs}
               controlsRef={controlsRef}
+              mergedLocated={locatedMerge.merged}
+              standaloneLocated={locatedMerge.standalone}
+              builtLocated={builtLocated}
+              fruitOffsets={fruitOffsets}
+              showLocatedTip={showLocatedTip}
+              hideLocatedTip={hideTooltip}
+              flightTargets={flightTargets}
+              simRef={simRef}
+              progressRef={progressRef}
             />
           </Canvas>
 
@@ -739,13 +1044,37 @@ function OrchardMap({ sessionId }) {
                 </span>
               </button>
             ))}
+            {locatedMerge.standalone.map((lt) => {
+              const key = 'loc:' + lt.id;
+              return (
+                <button
+                  key={key}
+                  ref={(el) => { chipRefs.current[key] = el; }}
+                  className="tree-chip"
+                  onClick={(e) => { e.stopPropagation(); onSelect(key); }}
+                  onPointerEnter={() => setHoverTree(key)}
+                  onPointerLeave={() => setHoverTree(null)}
+                >
+                  <span className="tc-id">{lt.label}</span>
+                  <span className="tc-detail">
+                    <span className="tc-count">{Math.round(lt.confidence * 100)}%</span> located
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
           {/* screen-fixed chrome */}
           <div className="ui">
-            <SummaryBar totals={totals} sessionId={sessionId} capturedAt={capturedAt} treeCount={trees.length} />
+            <SummaryBar
+              totals={totals} sessionId={sessionId} capturedAt={capturedAt}
+              treeCount={trees.length + locatedMerge.standalone.length}
+            />
             <Legend filterKey={filterKey} setFilter={setFilter} totals={totals} />
-            <DetailPanel tree={selectedTree} onClose={onDeselect} />
+            <FlightHUD simRef={simRef} progressRef={progressRef} />
+            {selectedLocated
+              ? <LocatedPanel lt={selectedLocated} onClose={onDeselect} />
+              : <DetailPanel tree={selectedTree} located={selectedTreeId ? locatedMerge.merged[selectedTreeId] : null} onClose={onDeselect} />}
             <div className="hint">drag to look · scroll to zoom · click a tree to inspect</div>
           </div>
 
