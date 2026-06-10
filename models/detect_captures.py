@@ -7,19 +7,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database.db_setup import FruitDatabase
 from models.locateanything_client import LocateAnythingClient
-
-def calculate_distance_cm(bbox_w, bbox_h, fruit_type='apple', ripeness='ripe'):
-    focal_length_px = 1850  # Tello camera approximate focal length
-    real_diameters = {
-        'apple':  {'ripe': 7.5, 'unripe': 5.5, 'overripe': 7.0},
-        'banana': {'ripe': 3.5, 'unripe': 3.0, 'overripe': 4.0},
-        'mango':  {'ripe': 8.0, 'unripe': 6.0, 'overripe': 8.5},
-    }
-    real_cm = real_diameters.get(fruit_type, {}).get(ripeness, 6.5)
-    pixel_diameter = max(bbox_w or 0, bbox_h or 0)
-    if pixel_diameter <= 0:
-        return None
-    return round((focal_length_px * real_cm) / pixel_diameter, 1)
+from models.fruit_catalog import calculate_distance_cm, calculate_plant_distance_cm
 
 def simplify_apple_detection(result):
     """
@@ -166,10 +154,18 @@ for image_file in image_files:
         all_results[image_file] = simplified_results
 
         for i, pred in enumerate(simplified_results):
-            if pred['class'] != "No detection":
-                parts = pred['class'].split('-')
-                fruit_type_p = parts[0] if len(parts) > 0 else 'apple'
-                ripeness_p = parts[1] if len(parts) > 1 else 'ripe'
+            if pred.get('category') == 'plant':
+                label = pred.get('label') or pred.get('class') or 'plant'
+                dist = calculate_plant_distance_cm(pred.get('bbox_w'), pred.get('bbox_h'), label)
+                dist_str = f", ~{dist} cm away" if dist is not None else ""
+                bbox_w = pred.get('bbox_w')
+                bbox_h = pred.get('bbox_h')
+                bbox_str = f"{bbox_w}x{bbox_h}px" if bbox_w and bbox_h else "no bbox"
+                print(f"  ℹ Plant located: {label} (confidence: {pred['confidence']:.2f}, bbox {bbox_str}{dist_str})")
+            elif pred['class'] != "No detection":
+                fruit_type_p, sep, ripeness_p = pred['class'].rpartition('-')
+                if not sep:
+                    fruit_type_p, ripeness_p = pred['class'], 'ripe'
                 dist = calculate_distance_cm(pred.get('bbox_w'), pred.get('bbox_h'), fruit_type_p, ripeness_p)
                 dist_str = f" (~{dist} cm away)" if dist is not None else ""
                 print(f"  ✓ Detected: {pred['class']} (confidence: {pred['confidence']:.2f}){dist_str}")

@@ -1,38 +1,67 @@
-.App {
-  text-align: center;
-}
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { margin: 0; padding: 0; height: 100%; }
 
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
-}
+.pomona-shell {
+  --paper:    #EAE0CC;
+  --card:     #F5EEDD;
+  --ink:      #2E2A22;
+  --ink-soft: #6B6354;
+  --rule:     #D2C4A6;
+  --mono:     'JetBrains Mono', ui-monospace, monospace;
 
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
-}
-
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
+  height: 100vh;
+  background: var(--paper);
+  color: var(--ink);
 }
 
-.App-link {
-  color: #61dafb;
+.pomona-tabs {
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  background: var(--card);
+  border-bottom: 1.5px solid var(--ink);
+  height: 42px;
+  z-index: 200;
 }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.pomona-tab-btn {
+  height: 100%;
+  padding: 0 22px;
+  background: none;
+  border: none;
+  border-right: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--ink-soft);
+  cursor: pointer;
+  position: relative;
+  transition: color .12s, background .12s;
+}
+
+.pomona-tab-btn:first-child { border-left: 1px solid var(--rule); }
+.pomona-tab-btn:hover { color: var(--ink); background: rgba(46,42,34,0.04); }
+
+.pomona-tab-btn.active {
+  color: var(--ink);
+  font-weight: 600;
+  background: rgba(46,42,34,0.06);
+}
+
+.pomona-tab-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1.5px;
+  left: 0; right: 0;
+  height: 2px;
+  background: var(--ink);
+}
+
+.pomona-content {
+  flex: 1;
+  min-height: 0;
+  position: relative;
 }

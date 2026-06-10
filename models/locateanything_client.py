@@ -12,25 +12,39 @@ try:
 except ImportError:
     certifi = None
 
+try:
+    from models.fruit_catalog import (
+        FRUIT_CATALOG,
+        RIPENESS_STAGES,
+        plant_kind_from_label,
+    )
+except ImportError:  # Allow running from inside the models/ directory
+    from fruit_catalog import FRUIT_CATALOG, RIPENESS_STAGES, plant_kind_from_label
 
+
+# One "ripeness fruit" label per catalog fruit per ripeness stage,
+# e.g. "ripe apple", "unripe blueberry", "overripe watermelon".
 DEFAULT_LABELS = [
-    "ripe apple",
-    "unripe apple",
-    "overripe apple",
-    "ripe banana",
-    "unripe banana",
-    "overripe banana",
-    "ripe mango",
-    "unripe mango",
-    "overripe mango",
+    f"{ripeness} {fruit}"
+    for fruit in FRUIT_CATALOG
+    for ripeness in RIPENESS_STAGES
 ]
+
+# Landmark labels: ask the open-vocab model to locate the plants themselves.
+DEFAULT_PLANT_LABELS = [
+    "fruit tree",
+    "bush",
+    "plant",
+]
+
+_RIPENESS_WORDS = set(RIPENESS_STAGES)
 
 
 def _label_to_class(label):
-    parts = label.strip().lower().replace("_", " ").split()
-    ripeness_words = {"ripe", "unripe", "overripe"}
-    ripeness = next((part for part in parts if part in ripeness_words), "ripe")
-    fruit = next((part for part in parts if part not in ripeness_words), "apple")
+    parts = (label or "").strip().lower().replace("_", " ").split()
+    ripeness = next((part for part in parts if part in _RIPENESS_WORDS), "ripe")
+    fruit_words = [part for part in parts if part not in _RIPENESS_WORDS]
+    fruit = " ".join(fruit_words) if fruit_words else "fruit"
     return f"{fruit}-{ripeness}"
 
 
@@ -38,6 +52,13 @@ def _parse_labels_from_env():
     raw = os.getenv("LOCATEANYTHING_LABELS")
     if not raw:
         return DEFAULT_LABELS
+    return [label.strip() for label in raw.split(",") if label.strip()]
+
+
+def _parse_plant_labels_from_env():
+    raw = os.getenv("LOCATEANYTHING_PLANT_LABELS")
+    if raw is None:
+        return DEFAULT_PLANT_LABELS
     return [label.strip() for label in raw.split(",") if label.strip()]
 
 
@@ -59,18 +80,40 @@ def _parse_box_answer(answer, image_width=None, image_height=None):
         else:
             x1_px, y1_px, x2_px, y2_px = x1, y1, x2, y2
 
-        detections.append({
-            "detection_id": str(uuid.uuid4()),
-            "class_id": None,
-            "class": _label_to_class(label),
-            "confidence": 1.0,
-            "multiple_predictions": False,
-            "other_detection_id": None,
+        bbox = {
             "bbox_x": round((x1_px + x2_px) / 2, 2),
             "bbox_y": round((y1_px + y2_px) / 2, 2),
             "bbox_w": round(abs(x2_px - x1_px), 2),
             "bbox_h": round(abs(y2_px - y1_px), 2),
-        })
+        }
+
+        plant_kind = plant_kind_from_label(label)
+        if plant_kind:
+            # Landmark detection (tree/bush/plant) — separate kind of result.
+            detection = {
+                "detection_id": str(uuid.uuid4()),
+                "class_id": None,
+                "category": "plant",
+                "class": label.strip().lower(),
+                "label": label.strip().lower(),
+                "plant_kind": plant_kind,
+                "confidence": 1.0,
+                "multiple_predictions": False,
+                "other_detection_id": None,
+            }
+        else:
+            # Fruit detection — keeps today's shape for backward compat.
+            detection = {
+                "detection_id": str(uuid.uuid4()),
+                "class_id": None,
+                "category": "fruit",
+                "class": _label_to_class(label),
+                "confidence": 1.0,
+                "multiple_predictions": False,
+                "other_detection_id": None,
+            }
+        detection.update(bbox)
+        detections.append(detection)
 
     return detections
 
@@ -81,6 +124,7 @@ class LocateAnythingClient:
         self.timeout = int(os.getenv("LOCATEANYTHING_TIMEOUT", timeout))
         self.ssl_context = self._build_ssl_context()
         self.labels = _parse_labels_from_env()
+        self.plant_labels = _parse_plant_labels_from_env()
 
         if not self.endpoint:
             raise ValueError(
@@ -102,7 +146,8 @@ class LocateAnythingClient:
         payload = {
             "image_filename": os.path.basename(image_path),
             "image_base64": image_base64,
-            "labels": self.labels,
+            # Open-vocab model: one request with fruit + landmark labels.
+            "labels": self.labels + self.plant_labels,
         }
         request = urllib.request.Request(
             f"{self.endpoint}/detect",
@@ -132,7 +177,15 @@ class LocateAnythingClient:
             raise RuntimeError(f"Could not reach LocateAnything endpoint: {exc}") from exc
 
         if "detections" in data:
-            return data["detections"] or self.no_detection()
+            detections = data["detections"] or self.no_detection()
+            for detection in detections:
+                if "category" not in detection:
+                    kind = plant_kind_from_label(detection.get("class") or "")
+                    detection["category"] = "plant" if kind else "fruit"
+                    if kind:
+                        detection.setdefault("label", detection.get("class"))
+                        detection.setdefault("plant_kind", kind)
+            return detections
 
         parsed = _parse_box_answer(
             data.get("answer"),
@@ -146,6 +199,7 @@ class LocateAnythingClient:
         return [{
             "detection_id": None,
             "class_id": None,
+            "category": "fruit",
             "class": "No detection",
             "confidence": 0.0,
             "multiple_predictions": False,

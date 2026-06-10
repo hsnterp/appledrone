@@ -3,6 +3,10 @@ import json
 from datetime import datetime
 import uuid
 import os
+import sys
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from models.fruit_catalog import calculate_distance_cm, calculate_plant_distance_cm
 
 class FruitDatabase:
     def __init__(self, db_path="data/fruits.db"):
@@ -45,7 +49,23 @@ class FruitDatabase:
                 notes TEXT
             )
         """)
-        
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS trees (
+                id TEXT PRIMARY KEY,
+                session_id TEXT,
+                image TEXT,
+                label TEXT,
+                confidence REAL,
+                bbox_x REAL,
+                bbox_y REAL,
+                bbox_w REAL,
+                bbox_h REAL,
+                distance_cm REAL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         conn.commit()
 
         # Migration: add new columns if they don't already exist
@@ -88,14 +108,21 @@ class FruitDatabase:
 
                 if detection['class'] == 'No detection':
                     continue
-                
+
+                # Plant/tree landmarks go to the trees table, not detections
+                if detection.get('category') == 'plant':
+                    self._insert_tree(cursor, session_id, image_file, detection)
+                    continue
+
                 detection_id = detection['detection_id']
-                
+
                 # Skip if already processed as part of a pair
                 if detection_id in processed_ids:
                     continue
-                
-                fruit_type, ripeness = detection['class'].split('-')
+
+                fruit_type, sep, ripeness = detection['class'].rpartition('-')
+                if not sep:
+                    fruit_type, ripeness = detection['class'], 'ripe'
                 confidence = detection['confidence']
                 has_multiple = detection['multiple_predictions']
                 
@@ -128,18 +155,7 @@ class FruitDatabase:
                 bbox_y = detection.get('bbox_y')
                 bbox_w = detection.get('bbox_w')
                 bbox_h = detection.get('bbox_h')
-                distance_cm = None
-                if bbox_w and bbox_h:
-                    focal_length_px = 1850
-                    real_diameters = {
-                        'apple':  {'ripe': 7.5, 'unripe': 5.5, 'overripe': 7.0},
-                        'banana': {'ripe': 3.5, 'unripe': 3.0, 'overripe': 4.0},
-                        'mango':  {'ripe': 8.0, 'unripe': 6.0, 'overripe': 8.5},
-                    }
-                    real_cm = real_diameters.get(fruit_type, {}).get(ripeness, 6.5)
-                    pixel_diameter = max(bbox_w, bbox_h)
-                    if pixel_diameter > 0:
-                        distance_cm = round((focal_length_px * real_cm) / pixel_diameter, 1)
+                distance_cm = calculate_distance_cm(bbox_w, bbox_h, fruit_type, ripeness)
 
                 cursor.execute("""
                     INSERT OR IGNORE INTO detections
@@ -181,7 +197,57 @@ class FruitDatabase:
         conn.commit()
         conn.close()
         return session_id
-    
+
+    @staticmethod
+    def _insert_tree(cursor, session_id, image_file, detection):
+        """Insert a plant/tree landmark detection into the trees table."""
+        label = detection.get('label') or detection.get('class') or 'plant'
+        bbox_w = detection.get('bbox_w')
+        bbox_h = detection.get('bbox_h')
+        distance_cm = detection.get('distance_cm')
+        if distance_cm is None:
+            distance_cm = calculate_plant_distance_cm(bbox_w, bbox_h, label)
+
+        cursor.execute("""
+            INSERT OR IGNORE INTO trees
+            (id, session_id, image, label, confidence,
+             bbox_x, bbox_y, bbox_w, bbox_h, distance_cm)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            detection.get('detection_id') or str(uuid.uuid4()),
+            session_id,
+            image_file,
+            label,
+            detection.get('confidence'),
+            detection.get('bbox_x'),
+            detection.get('bbox_y'),
+            bbox_w,
+            bbox_h,
+            distance_cm,
+        ))
+
+    def save_tree(self, session_id, image_file, detection):
+        """Save a single plant/tree landmark detection for a session."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        self._insert_tree(cursor, session_id, image_file, detection)
+        conn.commit()
+        conn.close()
+
+    def get_trees_for_session(self, session_id):
+        """Get all plant/tree landmarks located during a session."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, image, label, confidence,
+                   bbox_x, bbox_y, bbox_w, bbox_h, distance_cm
+            FROM trees WHERE session_id = ?
+            ORDER BY created_at, id
+        """, (session_id,))
+        results = cursor.fetchall()
+        conn.close()
+        return results
+
     def get_session_stats(self, session_id):
         """Get stats for a specific session"""
         conn = sqlite3.connect(self.db_path)
@@ -302,7 +368,8 @@ class FruitDatabase:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT detection_id, image_filename, fruit_type, ripeness,
-                   confidence, is_uncertain, final_classification
+                   confidence, is_uncertain, final_classification,
+                   bbox_x, bbox_y, bbox_w, bbox_h, distance_cm
             FROM detections WHERE session_id = ?
             ORDER BY confidence DESC
         """, (session_id,))

@@ -2,6 +2,7 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 import sys
 import os
+import math
 
 # Add parent directory to path to import database module
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -13,14 +14,6 @@ CORS(app, resources={r"/api/*": {"origins": ["http://localhost:3000", "http://12
 
 # Initialize database
 db = FruitDatabase()
-
-# Request logging disabled to prevent terminal I/O blocking
-# Uncomment below if you need to debug API requests
-# @app.after_request
-# def after_request(response):
-#     from flask import request
-#     print(f"Request: {request.method} {request.path} -> {response.status_code}")
-#     return response
 
 @app.route('/api/session/<session_id>/stats', methods=['GET'])
 def get_session_stats(session_id):
@@ -129,22 +122,99 @@ def get_sessions():
 
 @app.route('/api/session/<session_id>/detections', methods=['GET'])
 def get_session_detections(session_id):
+    # Tello stream resolution & focal length (from CLAUDE.md formula)
+    IMG_W, IMG_H = 960, 720
+    FOCAL_PX = 1850
+    CX, CY = IMG_W / 2.0, IMG_H / 2.0
+    GOLDEN_ANGLE = math.pi * 2 * (1 - 2 / (1 + math.sqrt(5)))
+
     try:
         detections = db.get_detections_for_session(session_id)
-        return jsonify({
-            'detections': [
-                {
-                    'id': det_id or f'det-{i}',
-                    'image': img,
-                    'fruitType': fruit,
-                    'ripeness': ripeness,
-                    'confidence': conf,
-                    'isUncertain': bool(uncertain),
-                    'classification': classification
-                }
-                for i, (det_id, img, fruit, ripeness, conf, uncertain, classification) in enumerate(detections)
-            ]
-        })
+        result = []
+        for i, (det_id, img, fruit, ripeness, conf, uncertain, classification,
+                bx, by, bw, bh, dist) in enumerate(detections):
+            # treeId: use image filename stem so all detections from the same
+            # capture are grouped under one tree.
+            tree_id = img.rsplit('.', 1)[0] if img else f'tree-{i // 4}'
+
+            # 3D position relative to mission pad (cm).
+            # If we have bbox + distance, project via pinhole model.
+            # Otherwise fall back to a stable golden-angle spiral so the map
+            # always renders something non-overlapping.
+            if bx is not None and bw is not None and dist:
+                # bbox_x/bbox_y are box centers (both Roboflow and
+                # LocateAnything store center coordinates).
+                cx_px = bx
+                cy_px = by if by is not None else CY
+                x_cm = (cx_px - CX) / FOCAL_PX * dist
+                y_cm = -((cy_px - CY) / FOCAL_PX * dist)
+                z_cm = float(dist)
+            else:
+                angle = i * GOLDEN_ANGLE
+                radius = 80 + (i % 6) * 30
+                x_cm = radius * math.cos(angle)
+                y_cm = 0.0
+                z_cm = radius * math.sin(angle) + 250
+
+            result.append({
+                'id': det_id or f'det-{i}',
+                'image': img,
+                'fruitType': fruit,
+                'ripeness': ripeness,
+                'confidence': conf,
+                'isUncertain': bool(uncertain),
+                'classification': classification,
+                'treeId': tree_id,
+                'position': {'x': x_cm, 'y': y_cm, 'z': z_cm},
+                'distanceCm': dist,
+            })
+        return jsonify({'detections': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/session/<session_id>/trees', methods=['GET'])
+def get_session_trees(session_id):
+    """Plant/tree landmarks located during a session, positioned relative
+    to the Mission Pad with the same pinhole math as fruit detections."""
+    IMG_W, IMG_H = 960, 720
+    FOCAL_PX = 1850
+    CX, CY = IMG_W / 2.0, IMG_H / 2.0
+    GOLDEN_ANGLE = math.pi * 2 * (1 - 2 / (1 + math.sqrt(5)))
+
+    try:
+        rows = db.get_trees_for_session(session_id)
+        trees = []
+        for i, (tree_id, img, label, conf, bx, by, bw, bh, dist) in enumerate(rows):
+            if bx is not None and bw is not None and dist:
+                # bbox_x/bbox_y are box centers, same as the detections above.
+                cx_px = bx
+                cy_px = by if by is not None else CY
+                x_cm = (cx_px - CX) / FOCAL_PX * dist
+                y_cm = -((cy_px - CY) / FOCAL_PX * dist)
+                z_cm = float(dist)
+            else:
+                # Deterministic golden-angle spread (wider ring than fruits)
+                angle = i * GOLDEN_ANGLE
+                radius = 200 + (i % 4) * 80
+                x_cm = radius * math.cos(angle)
+                y_cm = 0.0
+                z_cm = radius * math.sin(angle) + 400
+
+            trees.append({
+                'id': str(tree_id) if tree_id is not None else f'tree-{i}',
+                'image': img,
+                'label': label,
+                'confidence': conf if conf is not None else 0.0,
+                'bbox': {
+                    'x': bx if bx is not None else 0.0,
+                    'y': by if by is not None else 0.0,
+                    'w': bw if bw is not None else 0.0,
+                    'h': bh if bh is not None else 0.0,
+                },
+                'position': {'x': x_cm, 'y': y_cm, 'z': z_cm},
+                'distanceCm': dist,
+            })
+        return jsonify({'trees': trees})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
